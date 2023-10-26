@@ -20,7 +20,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - buckets
   verbs:
@@ -32,7 +32,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - buckets/finalizers
   verbs:
@@ -42,7 +42,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - buckets/status
   verbs:
@@ -50,7 +50,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - gitrepositories
   verbs:
@@ -62,7 +62,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - gitrepositories/finalizers
   verbs:
@@ -72,7 +72,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - gitrepositories/status
   verbs:
@@ -80,7 +80,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - helmcharts
   verbs:
@@ -92,7 +92,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - helmcharts/finalizers
   verbs:
@@ -102,7 +102,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - helmcharts/status
   verbs:
@@ -110,7 +110,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - helmrepositories
   verbs:
@@ -122,7 +122,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - helmrepositories/finalizers
   verbs:
@@ -132,7 +132,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - helmrepositories/status
   verbs:
@@ -140,7 +140,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - ocirepositories
   verbs:
@@ -152,7 +152,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - ocirepositories/finalizers
   verbs:
@@ -162,7 +162,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - source.toolkit.fluxcd.io
+  - flux.cd.qdrant.io
   resources:
   - ocirepositories/status
   verbs:

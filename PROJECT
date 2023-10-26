@@ -1,34 +1,34 @@
-domain: toolkit.fluxcd.io
+domain: cd.qdrant.io
 repo: github.com/fluxcd/source-controller
 resources:
-- group: source
+- group: flux
   kind: GitRepository
   version: v1
-- group: source
+- group: flux
   kind: GitRepository
   version: v1beta2
-- group: source
+- group: flux
   kind: HelmRepository
   version: v1beta2
-- group: source
+- group: flux
   kind: HelmChart
   version: v1beta2
-- group: source
+- group: flux
   kind: Bucket
   version: v1beta2
-- group: source
+- group: flux
   kind: GitRepository
   version: v1beta1
-- group: source
+- group: flux
   kind: HelmRepository
   version: v1beta1
-- group: source
+- group: flux
   kind: HelmChart
   version: v1beta1
-- group: source
+- group: flux
   kind: Bucket
   version: v1beta1
-- group: source
+- group: flux
   kind: OCIRepository
   version: v1beta2
 version: "2"

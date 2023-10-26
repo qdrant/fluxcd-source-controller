@@ -2,7 +2,12 @@ module github.com/fluxcd/source-controller
 
 go 1.20
 
-replace github.com/fluxcd/source-controller/api => ./api
+replace (
+	github.com/fluxcd/source-controller/api => ./api
+	github.com/fluxcd/source-controller/internal => ./internal
+	github.com/fluxcd/source-controller/pkg => ./pkg
+	github.com/fluxcd/source-controller/test => ./test
+)
 
 // Replace digest lib to master to gather access to BLAKE3.
 // xref: https://github.com/opencontainers/go-digest/pull/66

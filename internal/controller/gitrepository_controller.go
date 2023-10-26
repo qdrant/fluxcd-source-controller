@@ -115,9 +115,9 @@ func getPatchOptions(ownedConditions []string, controllerName string) []patch.Op
 	}
 }
 
-// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories/finalizers,verbs=get;create;update;patch;delete
+// +kubebuilder:rbac:groups=flux.cd.qdrant.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=flux.cd.qdrant.io,resources=gitrepositories/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=flux.cd.qdrant.io,resources=gitrepositories/finalizers,verbs=get;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // GitRepositoryReconciler reconciles a v1beta2.GitRepository object.
