@@ -9,13 +9,10 @@ import (
 
 	helper "github.com/fluxcd/pkg/runtime/controller"
 	"github.com/fluxcd/pkg/runtime/events"
-	"github.com/fluxcd/pkg/runtime/metrics"
-
 	"github.com/fluxcd/source-controller/internal/helm/registry"
 
 	"context"
 
-	srcv1 "github.com/fluxcd/source-controller/api/v1"
 	"github.com/fluxcd/source-controller/api/v1beta2"
 	"github.com/fluxcd/source-controller/internal/cache"
 	"github.com/fluxcd/source-controller/internal/controller"
@@ -56,6 +53,7 @@ type SourceAdapter struct {
 	FileServerPort    int
 	ControllerName    string
 	ReconcilerOptions ReconcilerOptions
+	MetricOptions     helper.Metrics
 }
 type ReconcilerOptions struct {
 	RateLimiter ratelimiter.RateLimiter
@@ -77,12 +75,10 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		return err
 	}
 
-	srcMetrics := helper.NewMetrics(mgr, metrics.MustMakeRecorder(), srcv1.SourceFinalizer)
-
 	if err := (&controller.HelmRepositoryReconciler{
 		Client:         mgr.GetClient(),
 		EventRecorder:  eventRecorder,
-		Metrics:        srcMetrics,
+		Metrics:        adapter.MetricOptions,
 		Storage:        storage,
 		Getters:        getters,
 		ControllerName: adapter.ControllerName,
@@ -101,7 +97,7 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		Storage:                 storage,
 		Getters:                 getters,
 		EventRecorder:           eventRecorder,
-		Metrics:                 srcMetrics,
+		Metrics:                 adapter.MetricOptions,
 		ControllerName:          adapter.ControllerName,
 		Cache:                   helmIndexCache,
 		TTL:                     helmIndexCacheItemTTL,
