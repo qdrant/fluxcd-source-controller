@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.12.0
-  name: gitrepositories.flux.cd.qdrant.io
+  name: gitrepositories.cd.qdrant.io
 spec:
-  group: flux.cd.qdrant.io
+  group: cd.qdrant.io
   names:
     kind: GitRepository
     listKind: GitRepositoryList

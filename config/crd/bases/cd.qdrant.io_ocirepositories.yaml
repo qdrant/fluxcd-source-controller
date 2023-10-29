@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.12.0
-  name: ocirepositories.flux.cd.qdrant.io
+  name: ocirepositories.cd.qdrant.io
 spec:
-  group: flux.cd.qdrant.io
+  group: cd.qdrant.io
   names:
     kind: OCIRepository
     listKind: OCIRepositoryList

@@ -1,5 +1,5 @@
 ---
-apiVersion: flux.cd.qdrant.io/v1beta2
+apiVersion: cd.qdrant.io/v1beta2
 kind: HelmRepository
 metadata:
   name: podinfo
@@ -8,7 +8,7 @@ spec:
   type: "oci"
   interval: 1m
 ---
-apiVersion: flux.cd.qdrant.io/v1beta2
+apiVersion: cd.qdrant.io/v1beta2
 kind: HelmChart
 metadata:
   name: podinfo
@@ -20,7 +20,7 @@ spec:
   version: '6.1.*'
   interval: 1m
 ---
-apiVersion: flux.cd.qdrant.io/v1beta2
+apiVersion: cd.qdrant.io/v1beta2
 kind: HelmChart
 metadata:
   name: podinfo-keyless

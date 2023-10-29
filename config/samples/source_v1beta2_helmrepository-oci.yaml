@@ -1,4 +1,4 @@
-apiVersion: flux.cd.qdrant.io/v1beta2
+apiVersion: cd.qdrant.io/v1beta2
 kind: HelmRepository
 metadata:
   name: helmrepository-sample-oci
