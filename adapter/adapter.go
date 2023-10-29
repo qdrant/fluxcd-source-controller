@@ -7,11 +7,15 @@ import (
 	"os"
 	"time"
 
+	helper "github.com/fluxcd/pkg/runtime/controller"
+	"github.com/fluxcd/pkg/runtime/events"
+	"github.com/fluxcd/pkg/runtime/metrics"
+
 	"github.com/fluxcd/source-controller/internal/helm/registry"
 
 	"context"
 
-	helper "github.com/fluxcd/pkg/runtime/controller"
+	srcv1 "github.com/fluxcd/source-controller/api/v1"
 	"github.com/fluxcd/source-controller/api/v1beta2"
 	"github.com/fluxcd/source-controller/internal/cache"
 	"github.com/fluxcd/source-controller/internal/controller"
@@ -21,14 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	kuberecorder "k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/ratelimiter"
-)
-
-const (
-	controllerName = "helm-controller"
 )
 
 var (
@@ -52,25 +50,18 @@ func init() {
 	utilruntime.Must(v1.AddToScheme(scheme))
 }
 
-type StorageOptions struct {
-	Path                    string
-	ServerAdvertisedAddress string
-}
-
 type SourceAdapter struct {
-	client.Client
-	kuberecorder.EventRecorder
-	helper.Metrics
-	Context        context.Context
-	StoragePath    string
-	FileServerPort int
-	ControllerName string
+	Context           context.Context
+	StoragePath       string
+	FileServerPort    int
+	ControllerName    string
+	ReconcilerOptions ReconcilerOptions
 }
 type ReconcilerOptions struct {
 	RateLimiter ratelimiter.RateLimiter
 }
 
-func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter, opts ReconcilerOptions) error {
+func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 	storage := mustInitStorage(
 		adapter.StoragePath,
 		adapter.getFileServerAddress(),
@@ -81,19 +72,25 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter, opts Reconc
 	cacheRecorder := cache.MustMakeMetrics()
 
 	helmIndexCache, helmIndexCacheItemTTL := mustInitHelmCache(0, "15m", "1m")
+	eventRecorder, err := events.NewRecorder(mgr, ctrl.Log, "", adapter.ControllerName)
+	if err != nil {
+		return err
+	}
+
+	srcMetrics := helper.NewMetrics(mgr, metrics.MustMakeRecorder(), srcv1.SourceFinalizer)
 
 	if err := (&controller.HelmRepositoryReconciler{
 		Client:         mgr.GetClient(),
-		EventRecorder:  adapter.EventRecorder,
-		Metrics:        adapter.Metrics,
+		EventRecorder:  eventRecorder,
+		Metrics:        srcMetrics,
 		Storage:        storage,
 		Getters:        getters,
-		ControllerName: controllerName,
+		ControllerName: adapter.ControllerName,
 		Cache:          helmIndexCache,
 		TTL:            helmIndexCacheItemTTL,
 		CacheRecorder:  cacheRecorder,
 	}).SetupWithManagerAndOptions(mgr, controller.HelmRepositoryReconcilerOptions{
-		RateLimiter: opts.RateLimiter,
+		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
 		return err
 	}
@@ -103,14 +100,14 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter, opts Reconc
 		RegistryClientGenerator: registry.ClientGenerator,
 		Storage:                 storage,
 		Getters:                 getters,
-		EventRecorder:           adapter.EventRecorder,
-		Metrics:                 adapter.Metrics,
-		ControllerName:          controllerName,
+		EventRecorder:           eventRecorder,
+		Metrics:                 srcMetrics,
+		ControllerName:          adapter.ControllerName,
 		Cache:                   helmIndexCache,
 		TTL:                     helmIndexCacheItemTTL,
 		CacheRecorder:           cacheRecorder,
 	}).SetupWithManagerAndOptions(adapter.Context, mgr, controller.HelmChartReconcilerOptions{
-		RateLimiter: opts.RateLimiter,
+		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
 		return err
 	}
