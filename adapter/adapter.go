@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -62,6 +63,7 @@ type SourceAdapter struct {
 	helper.Metrics
 	Context        context.Context
 	StoragePath    string
+	FileServerPort int
 	ControllerName string
 }
 type ReconcilerOptions struct {
@@ -71,7 +73,7 @@ type ReconcilerOptions struct {
 func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter, opts ReconcilerOptions) error {
 	storage := mustInitStorage(
 		adapter.StoragePath,
-		"",
+		adapter.getFileServerAddress(),
 		60*time.Second,
 		2,
 		intdigest.Canonical.String(),
@@ -120,9 +122,17 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter, opts Reconc
 		// to handle that.
 		<-mgr.Elected()
 
-		startFileServer(storage.BasePath, ":9090")
+		startFileServer(storage.BasePath, adapter.getFileServerAddress())
 	}()
 	return nil
+}
+
+func (a *SourceAdapter) getFileServerAddress() string {
+	port := 9090
+	if a.FileServerPort != 0 {
+		port = a.FileServerPort
+	}
+	return fmt.Sprintf(":%d", port)
 }
 
 func mustInitStorage(path string, storageAdvAddr string, artifactRetentionTTL time.Duration, artifactRetentionRecords int, artifactDigestAlgo string) *controller.Storage {
