@@ -108,18 +108,6 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		return err
 	}
 
-	if err := (&controller.OCIRepositoryReconciler{
-		Client:         mgr.GetClient(),
-		Storage:        storage,
-		EventRecorder:  eventRecorder,
-		ControllerName: adapter.ControllerName,
-		Metrics:        adapter.MetricOptions,
-	}).SetupWithManagerAndOptions(mgr, controller.OCIRepositoryReconcilerOptions{
-		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
-	}); err != nil {
-		return err
-	}
-
 	// Start file server for serving chart archives
 	go func() {
 		// Block until our controller manager is elected leader. We presume our
