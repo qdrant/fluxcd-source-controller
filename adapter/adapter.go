@@ -56,7 +56,8 @@ type SourceAdapter struct {
 	MetricOptions     helper.Metrics
 }
 type ReconcilerOptions struct {
-	RateLimiter ratelimiter.RateLimiter
+	RateLimiter               ratelimiter.RateLimiter
+	DependencyRequeueInterval time.Duration
 }
 
 func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
@@ -86,6 +87,43 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		TTL:            helmIndexCacheItemTTL,
 		CacheRecorder:  cacheRecorder,
 	}).SetupWithManagerAndOptions(mgr, controller.HelmRepositoryReconcilerOptions{
+		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
+	}); err != nil {
+		return err
+	}
+
+	if err := (&controller.HelmRepositoryOCIReconciler{
+		Client:                  mgr.GetClient(),
+		EventRecorder:           eventRecorder,
+		Metrics:                 adapter.MetricOptions,
+		ControllerName:          adapter.ControllerName,
+		RegistryClientGenerator: registry.ClientGenerator,
+	}).SetupWithManagerAndOptions(mgr, controller.HelmRepositoryReconcilerOptions{
+		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
+	}); err != nil {
+		return err
+	}
+
+	if err := (&controller.GitRepositoryReconciler{
+		Client:         mgr.GetClient(),
+		EventRecorder:  eventRecorder,
+		Metrics:        adapter.MetricOptions,
+		Storage:        storage,
+		ControllerName: adapter.ControllerName,
+	}).SetupWithManagerAndOptions(mgr, controller.GitRepositoryReconcilerOptions{
+		DependencyRequeueInterval: adapter.ReconcilerOptions.DependencyRequeueInterval,
+		RateLimiter:               adapter.ReconcilerOptions.RateLimiter,
+	}); err != nil {
+		return err
+	}
+
+	if err := (&controller.BucketReconciler{
+		Client:         mgr.GetClient(),
+		EventRecorder:  eventRecorder,
+		Metrics:        adapter.MetricOptions,
+		Storage:        storage,
+		ControllerName: adapter.ControllerName,
+	}).SetupWithManagerAndOptions(mgr, controller.BucketReconcilerOptions{
 		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
 		return err
