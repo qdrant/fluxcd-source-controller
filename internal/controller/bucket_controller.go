@@ -123,6 +123,7 @@ type BucketReconciler struct {
 
 	Storage        *Storage
 	ControllerName string
+	LeaderElection *bool
 
 	patchOptions []patch.Option
 }
@@ -169,7 +170,8 @@ func (r *BucketReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, opts Buc
 		For(&bucketv1.Bucket{}).
 		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicates.ReconcileRequestedPredicate{})).
 		WithOptions(controller.Options{
-			RateLimiter: opts.RateLimiter,
+			RateLimiter:        opts.RateLimiter,
+			NeedLeaderElection: r.LeaderElection,
 		}).
 		Complete(r)
 }

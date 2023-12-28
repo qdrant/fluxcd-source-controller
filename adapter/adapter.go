@@ -54,6 +54,7 @@ type SourceAdapter struct {
 	ControllerName    string
 	ReconcilerOptions ReconcilerOptions
 	MetricOptions     helper.Metrics
+	LeaderElection    *bool
 }
 type ReconcilerOptions struct {
 	RateLimiter               ratelimiter.RateLimiter
@@ -86,6 +87,7 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		Cache:          helmIndexCache,
 		TTL:            helmIndexCacheItemTTL,
 		CacheRecorder:  cacheRecorder,
+		LeaderElection: adapter.LeaderElection,
 	}).SetupWithManagerAndOptions(mgr, controller.HelmRepositoryReconcilerOptions{
 		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
@@ -98,6 +100,7 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		Metrics:                 adapter.MetricOptions,
 		ControllerName:          adapter.ControllerName,
 		RegistryClientGenerator: registry.ClientGenerator,
+		LeaderElection:          adapter.LeaderElection,
 	}).SetupWithManagerAndOptions(mgr, controller.HelmRepositoryReconcilerOptions{
 		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
@@ -110,6 +113,7 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		Metrics:        adapter.MetricOptions,
 		Storage:        storage,
 		ControllerName: adapter.ControllerName,
+		LeaderElection: adapter.LeaderElection,
 	}).SetupWithManagerAndOptions(mgr, controller.GitRepositoryReconcilerOptions{
 		DependencyRequeueInterval: adapter.ReconcilerOptions.DependencyRequeueInterval,
 		RateLimiter:               adapter.ReconcilerOptions.RateLimiter,
@@ -123,6 +127,7 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		Metrics:        adapter.MetricOptions,
 		Storage:        storage,
 		ControllerName: adapter.ControllerName,
+		LeaderElection: adapter.LeaderElection,
 	}).SetupWithManagerAndOptions(mgr, controller.BucketReconcilerOptions{
 		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
@@ -140,6 +145,7 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		Cache:                   helmIndexCache,
 		TTL:                     helmIndexCacheItemTTL,
 		CacheRecorder:           cacheRecorder,
+		LeaderElection:          adapter.LeaderElection,
 	}).SetupWithManagerAndOptions(adapter.Context, mgr, controller.HelmChartReconcilerOptions{
 		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {

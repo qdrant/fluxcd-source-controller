@@ -128,6 +128,7 @@ type GitRepositoryReconciler struct {
 
 	Storage        *Storage
 	ControllerName string
+	LeaderElection *bool
 
 	requeueDependency time.Duration
 	features          map[string]bool
@@ -162,7 +163,8 @@ func (r *GitRepositoryReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, o
 			predicate.Or(predicate.GenerationChangedPredicate{}, predicates.ReconcileRequestedPredicate{}),
 		)).
 		WithOptions(controller.Options{
-			RateLimiter: opts.RateLimiter,
+			RateLimiter:        opts.RateLimiter,
+			NeedLeaderElection: r.LeaderElection,
 		}).
 		Complete(r)
 }

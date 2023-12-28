@@ -79,6 +79,7 @@ type HelmRepositoryOCIReconciler struct {
 
 	ControllerName          string
 	RegistryClientGenerator RegistryClientGeneratorFunc
+	LeaderElection          *bool
 
 	patchOptions []patch.Option
 
@@ -111,7 +112,8 @@ func (r *HelmRepositoryOCIReconciler) SetupWithManagerAndOptions(mgr ctrl.Manage
 			),
 		).
 		WithOptions(controller.Options{
-			RateLimiter: opts.RateLimiter,
+			RateLimiter:        opts.RateLimiter,
+			NeedLeaderElection: r.LeaderElection,
 		}).
 		Complete(r)
 }
