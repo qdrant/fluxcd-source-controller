@@ -113,9 +113,9 @@ var bucketFailConditions = []string{
 	sourcev1.StorageOperationFailedCondition,
 }
 
-// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=buckets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=buckets/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=buckets/finalizers,verbs=get;create;update;patch;delete
+// +kubebuilder:rbac:groups=cd.qdrant.io,resources=buckets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=cd.qdrant.io,resources=buckets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=cd.qdrant.io,resources=buckets/finalizers,verbs=get;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // BucketReconciler reconciles a v1beta2.Bucket object.
@@ -126,6 +126,7 @@ type BucketReconciler struct {
 
 	Storage        *Storage
 	ControllerName string
+	LeaderElection *bool
 
 	patchOptions []patch.Option
 }
@@ -172,7 +173,8 @@ func (r *BucketReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, opts Buc
 		For(&bucketv1.Bucket{}).
 		WithEventFilter(predicate.Or(predicate.GenerationChangedPredicate{}, predicates.ReconcileRequestedPredicate{})).
 		WithOptions(controller.Options{
-			RateLimiter: opts.RateLimiter,
+			RateLimiter:        opts.RateLimiter,
+			NeedLeaderElection: r.LeaderElection,
 		}).
 		Complete(r)
 }

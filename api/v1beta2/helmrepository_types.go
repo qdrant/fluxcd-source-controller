@@ -199,7 +199,7 @@ func (in *HelmRepository) GetArtifact() *apiv1.Artifact {
 
 // +genclient
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=helmrepo
+// +kubebuilder:resource:shortName=qdranthelmrepo
 // +kubebuilder:subresource:status
 // +kubebuilder:deprecatedversion:warning="v1beta2 HelmRepository is deprecated, upgrade to v1"
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.spec.url`
