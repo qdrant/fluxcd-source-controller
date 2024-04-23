@@ -232,7 +232,7 @@ func (in *HelmChart) GetValuesFiles() []string {
 
 // +genclient
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=hc
+// +kubebuilder:resource:shortName=qdranthc
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Chart",type=string,JSONPath=`.spec.chart`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
