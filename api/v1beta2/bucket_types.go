@@ -49,6 +49,8 @@ const (
 
 // BucketSpec specifies the required configuration to produce an Artifact for
 // an object storage bucket.
+// +kubebuilder:validation:XValidation:rule="self.provider == 'aws' || !has(self.sts)", message="STS configuration is only supported for the 'aws' Bucket provider"
+// +kubebuilder:validation:XValidation:rule="self.provider != 'aws' || !has(self.sts) || self.sts.provider == 'aws'", message="'aws' is the only supported STS provider for the 'aws' Bucket provider"
 type BucketSpec struct {
 	// Provider of the object storage bucket.
 	// Defaults to 'generic', which expects an S3 (API) compatible object
@@ -66,6 +68,14 @@ type BucketSpec struct {
 	// +required
 	Endpoint string `json:"endpoint"`
 
+	// STS specifies the required configuration to use a Security Token
+	// Service for fetching temporary credentials to authenticate in a
+	// Bucket provider.
+	//
+	// This field is only supported for the `aws` provider.
+	// +optional
+	STS *BucketSTSSpec `json:"sts,omitempty"`
+
 	// Insecure allows connecting to a non-TLS HTTP Endpoint.
 	// +optional
 	Insecure bool `json:"insecure,omitempty"`
@@ -82,6 +92,28 @@ type BucketSpec struct {
 	// for the Bucket.
 	// +optional
 	SecretRef *meta.LocalObjectReference `json:"secretRef,omitempty"`
+
+	// CertSecretRef can be given the name of a Secret containing
+	// either or both of
+	//
+	// - a PEM-encoded client certificate (`tls.crt`) and private
+	// key (`tls.key`);
+	// - a PEM-encoded CA certificate (`ca.crt`)
+	//
+	// and whichever are supplied, will be used for connecting to the
+	// bucket. The client cert and key are useful if you are
+	// authenticating with a certificate; the CA cert is useful if
+	// you are using a self-signed server certificate. The Secret must
+	// be of type `Opaque` or `kubernetes.io/tls`.
+	//
+	// This field is only supported for the `generic` provider.
+	// +optional
+	CertSecretRef *meta.LocalObjectReference `json:"certSecretRef,omitempty"`
+
+	// ProxySecretRef specifies the Secret containing the proxy configuration
+	// to use while communicating with the Bucket server.
+	// +optional
+	ProxySecretRef *meta.LocalObjectReference `json:"proxySecretRef,omitempty"`
 
 	// Interval at which the Bucket Endpoint is checked for updates.
 	// This interval is approximate and may be subject to jitter to ensure
@@ -114,6 +146,22 @@ type BucketSpec struct {
 	// NOTE: Not implemented, provisional as of https://github.com/fluxcd/flux2/pull/2092
 	// +optional
 	AccessFrom *acl.AccessFrom `json:"accessFrom,omitempty"`
+}
+
+// BucketSTSSpec specifies the required configuration to use a Security Token
+// Service for fetching temporary credentials to authenticate in a Bucket
+// provider.
+type BucketSTSSpec struct {
+	// Provider of the Security Token Service.
+	// +kubebuilder:validation:Enum=aws
+	// +required
+	Provider string `json:"provider"`
+
+	// Endpoint is the HTTP/S endpoint of the Security Token Service from
+	// where temporary credentials will be fetched.
+	// +required
+	// +kubebuilder:validation:Pattern="^(http|https)://.*$"
+	Endpoint string `json:"endpoint"`
 }
 
 // BucketStatus records the observed state of a Bucket.

@@ -38,7 +38,7 @@ FUZZ_TIME ?= 1m
 GO_STATIC_FLAGS=-ldflags "-s -w" -tags 'netgo,osusergo,static_build$(addprefix ,,$(GO_TAGS))'
 
 # API (doc) generation utilities
-CONTROLLER_GEN_VERSION ?= v0.14.0
+CONTROLLER_GEN_VERSION ?= v0.15.0
 GEN_API_REF_DOCS_VERSION ?= e327d0730470cbd61b06300f81c5fcf91c23c113
 
 # If gobin not set, create one on ./build and add to path.
@@ -61,9 +61,10 @@ ifeq ($(shell uname -s),Darwin)
 ENVTEST_ARCH=amd64
 endif
 
-all: build
+all: manager
 
-build: ## Build manager binary
+# Build manager binary
+manager: generate fmt vet
 	go build $(GO_STATIC_FLAGS) -o $(BUILD_DIR)/bin/manager main.go
 
 KUBEBUILDER_ASSETS?="$(shell $(ENVTEST) --arch=$(ENVTEST_ARCH) use -i $(ENVTEST_KUBERNETES_VERSION) --bin-dir=$(ENVTEST_ASSETS_DIR) -p path)"
@@ -188,7 +189,7 @@ TMP_DIR=$$(mktemp -d) ;\
 cd $$TMP_DIR ;\
 go mod init tmp ;\
 echo "Downloading $(2)" ;\
-env -i bash -c "GOBIN=$(GOBIN) PATH=$(PATH) GOPATH=$(shell go env GOPATH) GOCACHE=$(shell go env GOCACHE) go install $(2)" ;\
+env -i bash -c "GOBIN=$(GOBIN) PATH=\"$(PATH)\" GOPATH=$(shell go env GOPATH) GOCACHE=$(shell go env GOCACHE) go install $(2)" ;\
 rm -rf $$TMP_DIR ;\
 }
 endef

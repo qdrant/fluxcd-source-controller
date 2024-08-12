@@ -65,7 +65,7 @@ import (
 	"github.com/fluxcd/pkg/tar"
 
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
-	helmv1 "github.com/fluxcd/source-controller/api/v1beta2"
+	sourcev1beta2 "github.com/fluxcd/source-controller/api/v1beta2"
 	"github.com/fluxcd/source-controller/internal/cache"
 	serror "github.com/fluxcd/source-controller/internal/error"
 	"github.com/fluxcd/source-controller/internal/helm/chart"
@@ -160,29 +160,29 @@ type HelmChartReconcilerOptions struct {
 	RateLimiter ratelimiter.RateLimiter
 }
 
-// helmChartReconcileFunc is the function type for all the v1beta2.HelmChart
+// helmChartReconcileFunc is the function type for all the v1.HelmChart
 // (sub)reconcile functions. The type implementations are grouped and
 // executed serially to perform the complete reconcile of the object.
-type helmChartReconcileFunc func(ctx context.Context, sp *patch.SerialPatcher, obj *helmv1.HelmChart, build *chart.Build) (sreconcile.Result, error)
+type helmChartReconcileFunc func(ctx context.Context, sp *patch.SerialPatcher, obj *sourcev1.HelmChart, build *chart.Build) (sreconcile.Result, error)
 
 func (r *HelmChartReconciler) SetupWithManagerAndOptions(ctx context.Context, mgr ctrl.Manager, opts HelmChartReconcilerOptions) error {
 	r.patchOptions = getPatchOptions(helmChartReadyCondition.Owned, r.ControllerName)
 
-	if err := mgr.GetCache().IndexField(ctx, &helmv1.HelmRepository{}, helmv1.HelmRepositoryURLIndexKey,
+	if err := mgr.GetCache().IndexField(ctx, &sourcev1.HelmRepository{}, sourcev1.HelmRepositoryURLIndexKey,
 		r.indexHelmRepositoryByURL); err != nil {
 		return fmt.Errorf("failed setting index fields: %w", err)
 	}
-	if err := mgr.GetCache().IndexField(ctx, &helmv1.HelmChart{}, sourcev1.SourceIndexKey,
+	if err := mgr.GetCache().IndexField(ctx, &sourcev1.HelmChart{}, sourcev1.SourceIndexKey,
 		r.indexHelmChartBySource); err != nil {
 		return fmt.Errorf("failed setting index fields: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&helmv1.HelmChart{}, builder.WithPredicates(
+		For(&sourcev1.HelmChart{}, builder.WithPredicates(
 			predicate.Or(predicate.GenerationChangedPredicate{}, predicates.ReconcileRequestedPredicate{}),
 		)).
 		Watches(
-			&helmv1.HelmRepository{},
+			&sourcev1.HelmRepository{},
 			handler.EnqueueRequestsFromMapFunc(r.requestsForHelmRepositoryChange),
 			builder.WithPredicates(SourceRevisionChangePredicate{}),
 		).
@@ -192,7 +192,7 @@ func (r *HelmChartReconciler) SetupWithManagerAndOptions(ctx context.Context, mg
 			builder.WithPredicates(SourceRevisionChangePredicate{}),
 		).
 		Watches(
-			&helmv1.Bucket{},
+			&sourcev1beta2.Bucket{},
 			handler.EnqueueRequestsFromMapFunc(r.requestsForBucketChange),
 			builder.WithPredicates(SourceRevisionChangePredicate{}),
 		).
@@ -208,7 +208,7 @@ func (r *HelmChartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	log := ctrl.LoggerFrom(ctx)
 
 	// Fetch the HelmChart
-	obj := &helmv1.HelmChart{}
+	obj := &sourcev1.HelmChart{}
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -282,7 +282,7 @@ func (r *HelmChartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // reconcile iterates through the helmChartReconcileFunc tasks for the
 // object. It returns early on the first call that returns
 // reconcile.ResultRequeue, or produces an error.
-func (r *HelmChartReconciler) reconcile(ctx context.Context, sp *patch.SerialPatcher, obj *helmv1.HelmChart, reconcilers []helmChartReconcileFunc) (sreconcile.Result, error) {
+func (r *HelmChartReconciler) reconcile(ctx context.Context, sp *patch.SerialPatcher, obj *sourcev1.HelmChart, reconcilers []helmChartReconcileFunc) (sreconcile.Result, error) {
 	oldObj := obj.DeepCopy()
 
 	rreconcile.ProgressiveStatus(false, obj, meta.ProgressingReason, "reconciliation in progress")
@@ -335,7 +335,7 @@ func (r *HelmChartReconciler) reconcile(ctx context.Context, sp *patch.SerialPat
 }
 
 // notify emits notification related to the reconciliation.
-func (r *HelmChartReconciler) notify(ctx context.Context, oldObj, newObj *helmv1.HelmChart, build *chart.Build, res sreconcile.Result, resErr error) {
+func (r *HelmChartReconciler) notify(ctx context.Context, oldObj, newObj *sourcev1.HelmChart, build *chart.Build, res sreconcile.Result, resErr error) {
 	// Notify successful reconciliation for new artifact and recovery from any
 	// failure.
 	if resErr == nil && res == sreconcile.ResultSuccess && newObj.Status.Artifact != nil {
@@ -371,7 +371,7 @@ func (r *HelmChartReconciler) notify(ctx context.Context, oldObj, newObj *helmv1
 // condition is added.
 // The hostname of any URL in the Status of the object are updated, to ensure
 // they match the Storage server hostname of current runtime.
-func (r *HelmChartReconciler) reconcileStorage(ctx context.Context, sp *patch.SerialPatcher, obj *helmv1.HelmChart, _ *chart.Build) (sreconcile.Result, error) {
+func (r *HelmChartReconciler) reconcileStorage(ctx context.Context, sp *patch.SerialPatcher, obj *sourcev1.HelmChart, _ *chart.Build) (sreconcile.Result, error) {
 	// Garbage collect previous advertised artifact(s) from storage
 	_ = r.garbageCollect(ctx, obj)
 
@@ -425,7 +425,7 @@ func (r *HelmChartReconciler) reconcileStorage(ctx context.Context, sp *patch.Se
 	return sreconcile.ResultSuccess, nil
 }
 
-func (r *HelmChartReconciler) reconcileSource(ctx context.Context, sp *patch.SerialPatcher, obj *helmv1.HelmChart, build *chart.Build) (_ sreconcile.Result, retErr error) {
+func (r *HelmChartReconciler) reconcileSource(ctx context.Context, sp *patch.SerialPatcher, obj *sourcev1.HelmChart, build *chart.Build) (_ sreconcile.Result, retErr error) {
 	// Remove any failed verification condition.
 	// The reason is that a failing verification should be recalculated.
 	if conditions.IsFalse(obj, sourcev1.SourceVerifiedCondition) {
@@ -439,7 +439,7 @@ func (r *HelmChartReconciler) reconcileSource(ctx context.Context, sp *patch.Ser
 			fmt.Errorf("failed to get source: %w", err),
 			"SourceUnavailable",
 		)
-		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 
 		// Return Kubernetes client errors, but ignore others which can only be
 		// solved by a change in generation
@@ -455,7 +455,7 @@ func (r *HelmChartReconciler) reconcileSource(ctx context.Context, sp *patch.Ser
 	// Assert source has an artifact
 	if s.GetArtifact() == nil || !r.Storage.ArtifactExist(*s.GetArtifact()) {
 		// Set the condition to indicate that the source has no artifact for all types except OCI HelmRepository
-		if helmRepo, ok := s.(*helmv1.HelmRepository); !ok || helmRepo.Spec.Type != helmv1.HelmRepositoryTypeOCI {
+		if helmRepo, ok := s.(*sourcev1.HelmRepository); !ok || helmRepo.Spec.Type != sourcev1.HelmRepositoryTypeOCI {
 			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, "NoSourceArtifact",
 				"no artifact available for %s source '%s'", obj.Spec.SourceRef.Kind, obj.Spec.SourceRef.Name)
 			r.eventLogf(ctx, obj, eventv1.EventTypeTrace, "NoSourceArtifact",
@@ -502,9 +502,9 @@ func (r *HelmChartReconciler) reconcileSource(ctx context.Context, sp *patch.Ser
 
 	// Perform the build for the chart source type
 	switch typedSource := s.(type) {
-	case *helmv1.HelmRepository:
+	case *sourcev1.HelmRepository:
 		return r.buildFromHelmRepository(ctx, obj, typedSource, build)
-	case *sourcev1.GitRepository, *helmv1.Bucket:
+	case *sourcev1.GitRepository, *sourcev1beta2.Bucket:
 		return r.buildFromTarballArtifact(ctx, obj, *typedSource.GetArtifact(), build)
 	default:
 		// Ending up here should generally not be possible
@@ -514,12 +514,12 @@ func (r *HelmChartReconciler) reconcileSource(ctx context.Context, sp *patch.Ser
 }
 
 // buildFromHelmRepository attempts to pull and/or package a Helm chart with
-// the specified data from the v1beta2.HelmRepository and v1beta2.HelmChart
+// the specified data from the v1.HelmRepository and v1.HelmChart
 // objects.
-// In case of a failure it records v1beta2.FetchFailedCondition on the chart
+// In case of a failure it records v1.FetchFailedCondition on the chart
 // object, and returns early.
-func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *helmv1.HelmChart,
-	repo *helmv1.HelmRepository, b *chart.Build) (sreconcile.Result, error) {
+func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *sourcev1.HelmChart,
+	repo *sourcev1.HelmRepository, b *chart.Build) (sreconcile.Result, error) {
 	// Used to login with the repository declared provider
 	ctxTimeout, cancel := context.WithTimeout(ctx, repo.GetTimeout())
 	defer cancel()
@@ -535,7 +535,7 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 			err,
 			sourcev1.AuthenticationFailedReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 	if certsTmpDir != "" {
@@ -552,7 +552,7 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 	// Initialize the chart repository
 	var chartRepo repository.Downloader
 	switch repo.Spec.Type {
-	case helmv1.HelmRepositoryTypeOCI:
+	case sourcev1.HelmRepositoryTypeOCI:
 		if !helmreg.IsOCI(normalizedURL) {
 			err := fmt.Errorf("invalid OCI registry URL: %s", normalizedURL)
 			return chartRepoConfigErrorReturn(err, obj)
@@ -568,7 +568,7 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 				fmt.Errorf("failed to construct Helm client: %w", err),
 				meta.FailedReason,
 			)
-			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 			return sreconcile.ResultEmpty, e
 		}
 
@@ -593,7 +593,7 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 					fmt.Errorf("failed to verify the signature using provider '%s': %w", provider, err),
 					sourcev1.VerificationError,
 				)
-				conditions.MarkFalse(obj, sourcev1.SourceVerifiedCondition, e.Reason, e.Err.Error())
+				conditions.MarkFalse(obj, sourcev1.SourceVerifiedCondition, e.Reason, "%s", e)
 				return sreconcile.ResultEmpty, e
 			}
 		}
@@ -624,7 +624,7 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 					fmt.Errorf("failed to login to OCI registry: %w", err),
 					sourcev1.AuthenticationFailedReason,
 				)
-				conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+				conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 				return sreconcile.ResultEmpty, e
 			}
 		}
@@ -667,8 +667,9 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 	// Construct the chart builder with scoped configuration
 	cb := chart.NewRemoteBuilder(chartRepo)
 	opts := chart.BuildOptions{
-		ValuesFiles: obj.GetValuesFiles(),
-		Force:       obj.Generation != obj.Status.ObservedGeneration,
+		ValuesFiles:              obj.GetValuesFiles(),
+		IgnoreMissingValuesFiles: obj.Spec.IgnoreMissingValuesFiles,
+		Force:                    obj.Generation != obj.Status.ObservedGeneration,
 		// The remote builder will not attempt to download the chart if
 		// an artifact exists with the same name and version and `Force` is false.
 		// It will however try to verify the chart if `obj.Spec.Verify` is set, at every reconciliation.
@@ -676,6 +677,7 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 	}
 	if artifact := obj.GetArtifact(); artifact != nil {
 		opts.CachedChart = r.Storage.LocalPath(*artifact)
+		opts.CachedChartValuesFiles = obj.Status.ObservedValuesFiles
 	}
 
 	// Set the VersionMetadata to the object's Generation if ValuesFiles is defined
@@ -696,11 +698,11 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 }
 
 // buildFromTarballArtifact attempts to pull and/or package a Helm chart with
-// the specified data from the v1beta2.HelmChart object and the given
-// v1beta2.Artifact.
-// In case of a failure it records v1beta2.FetchFailedCondition on the chart
+// the specified data from the v1.HelmChart object and the given
+// v1.Artifact.
+// In case of a failure it records v1.FetchFailedCondition on the chart
 // object, and returns early.
-func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj *helmv1.HelmChart, source sourcev1.Artifact, b *chart.Build) (sreconcile.Result, error) {
+func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj *sourcev1.HelmChart, source sourcev1.Artifact, b *chart.Build) (sreconcile.Result, error) {
 	// Create temporary working directory
 	tmpDir, err := util.TempDirForObj("", obj)
 	if err != nil {
@@ -708,7 +710,7 @@ func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj 
 			fmt.Errorf("failed to create temporary working directory: %w", err),
 			sourcev1.DirCreationFailedReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 	defer os.RemoveAll(tmpDir)
@@ -720,7 +722,7 @@ func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj 
 			fmt.Errorf("failed to create directory to untar source into: %w", err),
 			sourcev1.DirCreationFailedReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 
@@ -731,7 +733,7 @@ func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj 
 			fmt.Errorf("failed to open source artifact: %w", err),
 			sourcev1.ReadOperationFailedReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 	if err = tar.Untar(f, sourceDir, tar.WithMaxUntarSize(-1)); err != nil {
@@ -762,25 +764,27 @@ func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj 
 
 	// Configure builder options, including any previously cached chart
 	opts := chart.BuildOptions{
-		ValuesFiles: obj.GetValuesFiles(),
-		Force:       obj.Generation != obj.Status.ObservedGeneration,
+		ValuesFiles:              obj.GetValuesFiles(),
+		IgnoreMissingValuesFiles: obj.Spec.IgnoreMissingValuesFiles,
+		Force:                    obj.Generation != obj.Status.ObservedGeneration,
 	}
-	if artifact := obj.Status.Artifact; artifact != nil {
+	if artifact := obj.GetArtifact(); artifact != nil {
 		opts.CachedChart = r.Storage.LocalPath(*artifact)
+		opts.CachedChartValuesFiles = obj.Status.ObservedValuesFiles
 	}
 
 	// Configure revision metadata for chart build if we should react to revision changes
-	if obj.Spec.ReconcileStrategy == helmv1.ReconcileStrategyRevision {
+	if obj.Spec.ReconcileStrategy == sourcev1.ReconcileStrategyRevision {
 		rev := source.Revision
 		if obj.Spec.SourceRef.Kind == sourcev1.GitRepositoryKind {
 			rev = git.ExtractHashFromRevision(rev).String()
 		}
-		if obj.Spec.SourceRef.Kind == helmv1.BucketKind {
+		if obj.Spec.SourceRef.Kind == sourcev1beta2.BucketKind {
 			if dig := digest.Digest(rev); dig.Validate() == nil {
 				rev = dig.Encoded()
 			}
 		}
-		if kind := obj.Spec.SourceRef.Kind; kind == sourcev1.GitRepositoryKind || kind == helmv1.BucketKind {
+		if kind := obj.Spec.SourceRef.Kind; kind == sourcev1.GitRepositoryKind || kind == sourcev1beta2.BucketKind {
 			// The SemVer from the metadata is at times used in e.g. the label metadata for a resource
 			// in a chart, which has a limited length of 63 characters.
 			// To not fill most of this space with a full length SHA hex (40 characters for SHA-1, and
@@ -822,12 +826,12 @@ func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj 
 // (Status) data on the object does not match the given.
 //
 // The inspection of the given data to the object is differed, ensuring any
-// stale observations like v1beta2.ArtifactOutdatedCondition are removed.
+// stale observations like v1.ArtifactOutdatedCondition are removed.
 // If the given Artifact does not differ from the object's current, it returns
 // early.
 // On a successful archive, the Artifact in the Status of the object is set,
 // and the symlink in the Storage is updated to its path.
-func (r *HelmChartReconciler) reconcileArtifact(ctx context.Context, _ *patch.SerialPatcher, obj *helmv1.HelmChart, b *chart.Build) (sreconcile.Result, error) {
+func (r *HelmChartReconciler) reconcileArtifact(ctx context.Context, _ *patch.SerialPatcher, obj *sourcev1.HelmChart, b *chart.Build) (sreconcile.Result, error) {
 	// Without a complete chart build, there is little to reconcile
 	if !b.Complete() {
 		return sreconcile.ResultRequeue, nil
@@ -837,7 +841,7 @@ func (r *HelmChartReconciler) reconcileArtifact(ctx context.Context, _ *patch.Se
 	defer func() {
 		if obj.Status.ObservedChartName == b.Name && obj.GetArtifact().HasRevision(b.Version) {
 			conditions.Delete(obj, sourcev1.ArtifactOutdatedCondition)
-			conditions.MarkTrue(obj, sourcev1.ArtifactInStorageCondition, reasonForBuild(b), b.Summary())
+			conditions.MarkTrue(obj, sourcev1.ArtifactInStorageCondition, reasonForBuild(b), "%s", b.Summary())
 		}
 	}()
 
@@ -859,7 +863,7 @@ func (r *HelmChartReconciler) reconcileArtifact(ctx context.Context, _ *patch.Se
 			fmt.Errorf("failed to create artifact directory: %w", err),
 			sourcev1.DirCreationFailedReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.StorageOperationFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.StorageOperationFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 	unlock, err := r.Storage.Lock(artifact)
@@ -868,7 +872,7 @@ func (r *HelmChartReconciler) reconcileArtifact(ctx context.Context, _ *patch.Se
 			fmt.Errorf("failed to acquire lock for artifact: %w", err),
 			sourcev1.AcquireLockFailedReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.StorageOperationFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.StorageOperationFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 	defer unlock()
@@ -879,13 +883,18 @@ func (r *HelmChartReconciler) reconcileArtifact(ctx context.Context, _ *patch.Se
 			fmt.Errorf("unable to copy Helm chart to storage: %w", err),
 			sourcev1.ArchiveOperationFailedReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.StorageOperationFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.StorageOperationFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 
 	// Record it on the object
 	obj.Status.Artifact = artifact.DeepCopy()
 	obj.Status.ObservedChartName = b.Name
+	if obj.Spec.IgnoreMissingValuesFiles {
+		obj.Status.ObservedValuesFiles = b.ValuesFiles
+	} else {
+		obj.Status.ObservedValuesFiles = nil
+	}
 
 	// Update symlink on a "best effort" basis
 	symURL, err := r.Storage.Symlink(artifact, "latest.tar.gz")
@@ -902,15 +911,15 @@ func (r *HelmChartReconciler) reconcileArtifact(ctx context.Context, _ *patch.Se
 
 // getSource returns the v1beta1.Source for the given object, or an error describing why the source could not be
 // returned.
-func (r *HelmChartReconciler) getSource(ctx context.Context, obj *helmv1.HelmChart) (sourcev1.Source, error) {
+func (r *HelmChartReconciler) getSource(ctx context.Context, obj *sourcev1.HelmChart) (sourcev1.Source, error) {
 	namespacedName := types.NamespacedName{
 		Namespace: obj.GetNamespace(),
 		Name:      obj.Spec.SourceRef.Name,
 	}
 	var s sourcev1.Source
 	switch obj.Spec.SourceRef.Kind {
-	case helmv1.HelmRepositoryKind:
-		var repo helmv1.HelmRepository
+	case sourcev1.HelmRepositoryKind:
+		var repo sourcev1.HelmRepository
 		if err := r.Client.Get(ctx, namespacedName, &repo); err != nil {
 			return nil, err
 		}
@@ -921,15 +930,15 @@ func (r *HelmChartReconciler) getSource(ctx context.Context, obj *helmv1.HelmCha
 			return nil, err
 		}
 		s = &repo
-	case helmv1.BucketKind:
-		var bucket helmv1.Bucket
+	case sourcev1beta2.BucketKind:
+		var bucket sourcev1beta2.Bucket
 		if err := r.Client.Get(ctx, namespacedName, &bucket); err != nil {
 			return nil, err
 		}
 		s = &bucket
 	default:
 		return nil, fmt.Errorf("unsupported source kind '%s', must be one of: %v", obj.Spec.SourceRef.Kind, []string{
-			helmv1.HelmRepositoryKind, sourcev1.GitRepositoryKind, helmv1.BucketKind})
+			sourcev1.HelmRepositoryKind, sourcev1.GitRepositoryKind, sourcev1beta2.BucketKind})
 	}
 	return s, nil
 }
@@ -937,7 +946,7 @@ func (r *HelmChartReconciler) getSource(ctx context.Context, obj *helmv1.HelmCha
 // reconcileDelete handles the deletion of the object.
 // It first garbage collects all Artifacts for the object from the Storage.
 // Removing the finalizer from the object if successful.
-func (r *HelmChartReconciler) reconcileDelete(ctx context.Context, obj *helmv1.HelmChart) (sreconcile.Result, error) {
+func (r *HelmChartReconciler) reconcileDelete(ctx context.Context, obj *sourcev1.HelmChart) (sreconcile.Result, error) {
 	// Garbage collect the resource's artifacts
 	if err := r.garbageCollect(ctx, obj); err != nil {
 		// Return the error so we retry the failed garbage collection
@@ -956,7 +965,7 @@ func (r *HelmChartReconciler) reconcileDelete(ctx context.Context, obj *helmv1.H
 // It removes all but the current Artifact from the Storage, unless the
 // deletion timestamp on the object is set. Which will result in the
 // removal of all Artifacts for the objects.
-func (r *HelmChartReconciler) garbageCollect(ctx context.Context, obj *helmv1.HelmChart) error {
+func (r *HelmChartReconciler) garbageCollect(ctx context.Context, obj *sourcev1.HelmChart) error {
 	if !obj.DeletionTimestamp.IsZero() {
 		if deleted, err := r.Storage.RemoveAll(r.Storage.NewArtifactFor(obj.Kind, obj.GetObjectMeta(), "", "*")); err != nil {
 			return serror.NewGeneric(
@@ -1003,8 +1012,8 @@ func (r *HelmChartReconciler) namespacedChartRepositoryCallback(ctx context.Cont
 			if apierrs.ReasonForError(err) != metav1.StatusReasonUnknown {
 				return nil, err
 			}
-			obj = &helmv1.HelmRepository{
-				Spec: helmv1.HelmRepositorySpec{
+			obj = &sourcev1.HelmRepository{
+				Spec: sourcev1.HelmRepositorySpec{
 					URL:     url,
 					Timeout: &metav1.Duration{Duration: 60 * time.Second},
 				},
@@ -1092,13 +1101,13 @@ func (r *HelmChartReconciler) namespacedChartRepositoryCallback(ctx context.Cont
 	}
 }
 
-func (r *HelmChartReconciler) resolveDependencyRepository(ctx context.Context, url string, namespace string) (*helmv1.HelmRepository, error) {
+func (r *HelmChartReconciler) resolveDependencyRepository(ctx context.Context, url string, namespace string) (*sourcev1.HelmRepository, error) {
 	listOpts := []client.ListOption{
 		client.InNamespace(namespace),
-		client.MatchingFields{helmv1.HelmRepositoryURLIndexKey: url},
+		client.MatchingFields{sourcev1.HelmRepositoryURLIndexKey: url},
 		client.Limit(1),
 	}
-	var list helmv1.HelmRepositoryList
+	var list sourcev1.HelmRepositoryList
 	err := r.Client.List(ctx, &list, listOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve HelmRepositoryList: %w", err)
@@ -1110,7 +1119,7 @@ func (r *HelmChartReconciler) resolveDependencyRepository(ctx context.Context, u
 }
 
 func (r *HelmChartReconciler) indexHelmRepositoryByURL(o client.Object) []string {
-	repo, ok := o.(*helmv1.HelmRepository)
+	repo, ok := o.(*sourcev1.HelmRepository)
 	if !ok {
 		panic(fmt.Sprintf("Expected a HelmRepository, got %T", o))
 	}
@@ -1122,7 +1131,7 @@ func (r *HelmChartReconciler) indexHelmRepositoryByURL(o client.Object) []string
 }
 
 func (r *HelmChartReconciler) indexHelmChartBySource(o client.Object) []string {
-	hc, ok := o.(*helmv1.HelmChart)
+	hc, ok := o.(*sourcev1.HelmChart)
 	if !ok {
 		panic(fmt.Sprintf("Expected a HelmChart, got %T", o))
 	}
@@ -1130,7 +1139,7 @@ func (r *HelmChartReconciler) indexHelmChartBySource(o client.Object) []string {
 }
 
 func (r *HelmChartReconciler) requestsForHelmRepositoryChange(ctx context.Context, o client.Object) []reconcile.Request {
-	repo, ok := o.(*helmv1.HelmRepository)
+	repo, ok := o.(*sourcev1.HelmRepository)
 	if !ok {
 		ctrl.LoggerFrom(ctx).Error(fmt.Errorf("expected a HelmRepository, got %T", o), "failed to get requests for HelmRepository change")
 		return nil
@@ -1141,9 +1150,9 @@ func (r *HelmChartReconciler) requestsForHelmRepositoryChange(ctx context.Contex
 		return nil
 	}
 
-	var list helmv1.HelmChartList
+	var list sourcev1.HelmChartList
 	if err := r.List(ctx, &list, client.MatchingFields{
-		sourcev1.SourceIndexKey: fmt.Sprintf("%s/%s", helmv1.HelmRepositoryKind, repo.Name),
+		sourcev1.SourceIndexKey: fmt.Sprintf("%s/%s", sourcev1.HelmRepositoryKind, repo.Name),
 	}); err != nil {
 		ctrl.LoggerFrom(ctx).Error(err, "failed to list HelmCharts for HelmRepository change")
 		return nil
@@ -1171,7 +1180,7 @@ func (r *HelmChartReconciler) requestsForGitRepositoryChange(ctx context.Context
 		return nil
 	}
 
-	var list helmv1.HelmChartList
+	var list sourcev1.HelmChartList
 	if err := r.List(ctx, &list, client.MatchingFields{
 		sourcev1.SourceIndexKey: fmt.Sprintf("%s/%s", sourcev1.GitRepositoryKind, repo.Name),
 	}); err != nil {
@@ -1189,7 +1198,7 @@ func (r *HelmChartReconciler) requestsForGitRepositoryChange(ctx context.Context
 }
 
 func (r *HelmChartReconciler) requestsForBucketChange(ctx context.Context, o client.Object) []reconcile.Request {
-	bucket, ok := o.(*helmv1.Bucket)
+	bucket, ok := o.(*sourcev1beta2.Bucket)
 	if !ok {
 		ctrl.LoggerFrom(ctx).Error(fmt.Errorf("expected a Bucket, got %T", o),
 			"failed to get reconcile requests for Bucket change")
@@ -1201,9 +1210,9 @@ func (r *HelmChartReconciler) requestsForBucketChange(ctx context.Context, o cli
 		return nil
 	}
 
-	var list helmv1.HelmChartList
+	var list sourcev1.HelmChartList
 	if err := r.List(ctx, &list, client.MatchingFields{
-		sourcev1.SourceIndexKey: fmt.Sprintf("%s/%s", helmv1.BucketKind, bucket.Name),
+		sourcev1.SourceIndexKey: fmt.Sprintf("%s/%s", sourcev1beta2.BucketKind, bucket.Name),
 	}); err != nil {
 		ctrl.LoggerFrom(ctx).Error(err, "failed to list HelmCharts for Bucket change")
 		return nil
@@ -1235,11 +1244,11 @@ func (r *HelmChartReconciler) eventLogf(ctx context.Context, obj runtime.Object,
 }
 
 // observeChartBuild records the observation on the given given build and error on the object.
-func observeChartBuild(ctx context.Context, sp *patch.SerialPatcher, pOpts []patch.Option, obj *helmv1.HelmChart, build *chart.Build, err error) {
+func observeChartBuild(ctx context.Context, sp *patch.SerialPatcher, pOpts []patch.Option, obj *sourcev1.HelmChart, build *chart.Build, err error) {
 	if build.HasMetadata() {
 		if build.Name != obj.Status.ObservedChartName || !obj.GetArtifact().HasRevision(build.Version) {
 			if obj.GetArtifact() != nil {
-				conditions.MarkTrue(obj, sourcev1.ArtifactOutdatedCondition, "NewChart", build.Summary())
+				conditions.MarkTrue(obj, sourcev1.ArtifactOutdatedCondition, "NewChart", "%s", build.Summary())
 			}
 			rreconcile.ProgressiveStatus(true, obj, meta.ProgressingReason, "building artifact: %s", build.Summary())
 			if err := sp.Patch(ctx, obj, pOpts...); err != nil {
@@ -1252,7 +1261,7 @@ func observeChartBuild(ctx context.Context, sp *patch.SerialPatcher, pOpts []pat
 		conditions.Delete(obj, sourcev1.FetchFailedCondition)
 		conditions.Delete(obj, sourcev1.BuildFailedCondition)
 		if build.VerifiedResult == oci.VerificationResultSuccess {
-			conditions.MarkTrue(obj, sourcev1.SourceVerifiedCondition, meta.SucceededReason, fmt.Sprintf("verified signature of version %s", build.Version))
+			conditions.MarkTrue(obj, sourcev1.SourceVerifiedCondition, meta.SucceededReason, "verified signature of version %s", build.Version)
 		}
 	}
 
@@ -1272,14 +1281,14 @@ func observeChartBuild(ctx context.Context, sp *patch.SerialPatcher, pOpts []pat
 		switch buildErr.Reason {
 		case chart.ErrChartMetadataPatch, chart.ErrValuesFilesMerge, chart.ErrDependencyBuild, chart.ErrChartPackage:
 			conditions.Delete(obj, sourcev1.FetchFailedCondition)
-			conditions.MarkTrue(obj, sourcev1.BuildFailedCondition, buildErr.Reason.Reason, buildErr.Error())
+			conditions.MarkTrue(obj, sourcev1.BuildFailedCondition, buildErr.Reason.Reason, "%s", buildErr)
 		case chart.ErrChartVerification:
 			conditions.Delete(obj, sourcev1.FetchFailedCondition)
-			conditions.MarkTrue(obj, sourcev1.BuildFailedCondition, buildErr.Reason.Reason, buildErr.Error())
-			conditions.MarkFalse(obj, sourcev1.SourceVerifiedCondition, sourcev1.VerificationError, buildErr.Error())
+			conditions.MarkTrue(obj, sourcev1.BuildFailedCondition, buildErr.Reason.Reason, "%s", buildErr)
+			conditions.MarkFalse(obj, sourcev1.SourceVerifiedCondition, sourcev1.VerificationError, "%s", buildErr)
 		default:
 			conditions.Delete(obj, sourcev1.BuildFailedCondition)
-			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, buildErr.Reason.Reason, buildErr.Error())
+			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, buildErr.Reason.Reason, "%s", buildErr)
 		}
 		return
 	}
@@ -1290,32 +1299,32 @@ func reasonForBuild(build *chart.Build) string {
 		return ""
 	}
 	if build.Packaged {
-		return helmv1.ChartPackageSucceededReason
+		return sourcev1.ChartPackageSucceededReason
 	}
-	return helmv1.ChartPullSucceededReason
+	return sourcev1.ChartPullSucceededReason
 }
 
-func chartRepoConfigErrorReturn(err error, obj *helmv1.HelmChart) (sreconcile.Result, error) {
+func chartRepoConfigErrorReturn(err error, obj *sourcev1.HelmChart) (sreconcile.Result, error) {
 	switch err.(type) {
 	case *url.Error:
 		e := serror.NewStalling(
 			fmt.Errorf("invalid Helm repository URL: %w", err),
 			sourcev1.URLInvalidReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	default:
 		e := serror.NewStalling(
 			fmt.Errorf("failed to construct Helm client: %w", err),
 			meta.FailedReason,
 		)
-		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, e.Err.Error())
+		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 }
 
 // makeVerifiers returns a list of verifiers for the given chart.
-func (r *HelmChartReconciler) makeVerifiers(ctx context.Context, obj *helmv1.HelmChart, clientOpts getter.ClientOpts) ([]soci.Verifier, error) {
+func (r *HelmChartReconciler) makeVerifiers(ctx context.Context, obj *sourcev1.HelmChart, clientOpts getter.ClientOpts) ([]soci.Verifier, error) {
 	var verifiers []soci.Verifier
 	verifyOpts := []remote.Option{}
 

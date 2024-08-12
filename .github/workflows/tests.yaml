@@ -3,11 +3,9 @@ name: tests
 on:
   workflow_dispatch:
   pull_request:
-    paths-ignore:
-      - 'CHANGELOG.md'
-      - 'README.md'
-      - 'MAINTAINERS'
-
+    branches:
+      - 'main'
+      - 'release/**'
   push:
     branches:
       - 'main'
@@ -22,9 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v4.1.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
       - name: Setup Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
         with:
           go-version-file: 'go.mod'
           cache-dependency-path: |
@@ -38,14 +36,14 @@ jobs:
         run: make test
 
   test-linux-arm64:
-    # Hosted on Equinix
-    # Docs: https://github.com/fluxcd/flux2/tree/main/.github/runners
-    runs-on: [self-hosted, Linux, ARM64, equinix]
+    runs-on:
+      group: "ARM64"
+    if: github.actor != 'dependabot[bot]'
     steps:
       - name: Checkout
-        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v4.1.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
       - name: Setup Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
         with:
           go-version-file: 'go.mod'
           cache-dependency-path: |
@@ -54,15 +52,6 @@ jobs:
       - name: Run tests
         env:
           SKIP_COSIGN_VERIFICATION: true
-
           TEST_AZURE_ACCOUNT_NAME: ${{ secrets.TEST_AZURE_ACCOUNT_NAME }}
           TEST_AZURE_ACCOUNT_KEY: ${{ secrets.TEST_AZURE_ACCOUNT_KEY }}
-          
-          # Temporarily disabling -race for arm64 as our GitHub action
-          # runners don't seem to like it. The race detection was tested
-          # on both Apple M1 and Linux arm64 with successful results.
-          #
-          # We should reenable go test -race for arm64 runners once the
-          # current issue is resolved.
-          GO_TEST_ARGS: ''
         run: make test

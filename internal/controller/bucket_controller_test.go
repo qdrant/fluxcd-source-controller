@@ -445,7 +445,7 @@ func TestBucketReconciler_reconcileSource_generic(t *testing.T) {
 		assertConditions []metav1.Condition
 	}{
 		{
-			name:       "Reconciles GCS source",
+			name:       "Reconciles generic source",
 			bucketName: "dummy",
 			bucketObjects: []*s3mock.Object{
 				{
@@ -511,6 +511,88 @@ func TestBucketReconciler_reconcileSource_generic(t *testing.T) {
 			},
 		},
 		{
+			name:       "Observes non-existing certSecretRef",
+			bucketName: "dummy",
+			beforeFunc: func(obj *bucketv1.Bucket) {
+				obj.Spec.CertSecretRef = &meta.LocalObjectReference{
+					Name: "dummy",
+				}
+				conditions.MarkReconciling(obj, meta.ProgressingReason, "foo")
+				conditions.MarkUnknown(obj, meta.ReadyCondition, "foo", "bar")
+			},
+			wantErr:     true,
+			assertIndex: index.NewDigester(),
+			assertConditions: []metav1.Condition{
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.AuthenticationFailedReason, "failed to get secret '/dummy': secrets \"dummy\" not found"),
+				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
+				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
+			},
+		},
+		{
+			name:       "Observes invalid certSecretRef",
+			bucketName: "dummy",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "dummy",
+				},
+			},
+			beforeFunc: func(obj *bucketv1.Bucket) {
+				obj.Spec.CertSecretRef = &meta.LocalObjectReference{
+					Name: "dummy",
+				}
+				conditions.MarkReconciling(obj, meta.ProgressingReason, "foo")
+				conditions.MarkUnknown(obj, meta.ReadyCondition, "foo", "bar")
+			},
+			wantErr:     true,
+			assertIndex: index.NewDigester(),
+			assertConditions: []metav1.Condition{
+				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
+				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.AuthenticationFailedReason, "certificate secret does not contain any TLS configuration"),
+			},
+		},
+		{
+			name:       "Observes non-existing proxySecretRef",
+			bucketName: "dummy",
+			beforeFunc: func(obj *bucketv1.Bucket) {
+				obj.Spec.ProxySecretRef = &meta.LocalObjectReference{
+					Name: "dummy",
+				}
+				conditions.MarkReconciling(obj, meta.ProgressingReason, "foo")
+				conditions.MarkUnknown(obj, meta.ReadyCondition, "foo", "bar")
+			},
+			wantErr:     true,
+			assertIndex: index.NewDigester(),
+			assertConditions: []metav1.Condition{
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.AuthenticationFailedReason, "failed to get secret '/dummy': secrets \"dummy\" not found"),
+				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
+				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
+			},
+		},
+		{
+			name:       "Observes invalid proxySecretRef",
+			bucketName: "dummy",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "dummy",
+				},
+			},
+			beforeFunc: func(obj *bucketv1.Bucket) {
+				obj.Spec.ProxySecretRef = &meta.LocalObjectReference{
+					Name: "dummy",
+				}
+				conditions.MarkReconciling(obj, meta.ProgressingReason, "foo")
+				conditions.MarkUnknown(obj, meta.ReadyCondition, "foo", "bar")
+			},
+			wantErr:     true,
+			assertIndex: index.NewDigester(),
+			assertConditions: []metav1.Condition{
+				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
+				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.AuthenticationFailedReason, "invalid proxy secret '/dummy': key 'address' is missing"),
+			},
+		},
+		{
 			name:       "Observes non-existing bucket name",
 			bucketName: "dummy",
 			beforeFunc: func(obj *bucketv1.Bucket) {
@@ -522,6 +604,45 @@ func TestBucketReconciler_reconcileSource_generic(t *testing.T) {
 			assertIndex: index.NewDigester(),
 			assertConditions: []metav1.Condition{
 				*conditions.TrueCondition(sourcev1.FetchFailedCondition, bucketv1.BucketOperationFailedReason, "bucket 'invalid' not found"),
+				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
+				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
+			},
+		},
+		{
+			name:       "Observes incompatible STS provider",
+			bucketName: "dummy",
+			beforeFunc: func(obj *bucketv1.Bucket) {
+				obj.Spec.Provider = "generic"
+				obj.Spec.STS = &bucketv1.BucketSTSSpec{
+					Provider: "aws",
+				}
+				conditions.MarkReconciling(obj, meta.ProgressingReason, "foo")
+				conditions.MarkUnknown(obj, meta.ReadyCondition, "foo", "bar")
+			},
+			wantErr:     true,
+			assertIndex: index.NewDigester(),
+			assertConditions: []metav1.Condition{
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.InvalidSTSConfigurationReason, "STS configuration is not supported for 'generic' bucket provider"),
+				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
+				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
+			},
+		},
+		{
+			name:       "Observes invalid STS endpoint",
+			bucketName: "dummy",
+			beforeFunc: func(obj *bucketv1.Bucket) {
+				obj.Spec.Provider = "aws" // TODO: change to generic when ldap STS provider is implemented
+				obj.Spec.STS = &bucketv1.BucketSTSSpec{
+					Provider: "aws", // TODO: change to ldap when ldap STS provider is implemented
+					Endpoint: "something\t",
+				}
+				conditions.MarkReconciling(obj, meta.ProgressingReason, "foo")
+				conditions.MarkUnknown(obj, meta.ReadyCondition, "foo", "bar")
+			},
+			wantErr:     true,
+			assertIndex: index.NewDigester(),
+			assertConditions: []metav1.Condition{
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.URLInvalidReason, "failed to parse STS endpoint 'something\t': parse \"something\\t\": net/url: invalid control character in URL"),
 				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
 				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
 			},
@@ -852,6 +973,49 @@ func TestBucketReconciler_reconcileSource_gcs(t *testing.T) {
 			},
 		},
 		{
+			name:       "Observes non-existing proxySecretRef",
+			bucketName: "dummy",
+			beforeFunc: func(obj *bucketv1.Bucket) {
+				obj.Spec.ProxySecretRef = &meta.LocalObjectReference{
+					Name: "dummy",
+				}
+				conditions.MarkReconciling(obj, meta.ProgressingReason, "foo")
+				conditions.MarkUnknown(obj, meta.ReadyCondition, "foo", "bar")
+			},
+			want:        sreconcile.ResultEmpty,
+			wantErr:     true,
+			assertIndex: index.NewDigester(),
+			assertConditions: []metav1.Condition{
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.AuthenticationFailedReason, "failed to get secret '/dummy': secrets \"dummy\" not found"),
+				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
+				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
+			},
+		},
+		{
+			name:       "Observes invalid proxySecretRef",
+			bucketName: "dummy",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "dummy",
+				},
+			},
+			beforeFunc: func(obj *bucketv1.Bucket) {
+				obj.Spec.ProxySecretRef = &meta.LocalObjectReference{
+					Name: "dummy",
+				}
+				conditions.MarkReconciling(obj, meta.ProgressingReason, "foo")
+				conditions.MarkUnknown(obj, meta.ReadyCondition, "foo", "bar")
+			},
+			want:        sreconcile.ResultEmpty,
+			wantErr:     true,
+			assertIndex: index.NewDigester(),
+			assertConditions: []metav1.Condition{
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.AuthenticationFailedReason, "invalid proxy secret '/dummy': key 'address' is missing"),
+				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "foo"),
+				*conditions.UnknownCondition(meta.ReadyCondition, "foo", "bar"),
+			},
+		},
+		{
 			name:       "Observes non-existing bucket name",
 			bucketName: "dummy",
 			beforeFunc: func(obj *bucketv1.Bucket) {
@@ -1096,7 +1260,11 @@ func TestBucketReconciler_reconcileSource_gcs(t *testing.T) {
 			sp := patch.NewSerialPatcher(obj, r.Client)
 
 			got, err := r.reconcileSource(context.TODO(), sp, obj, index, tmpDir)
-			g.Expect(err != nil).To(Equal(tt.wantErr))
+			if tt.wantErr {
+				g.Expect(err).To(HaveOccurred())
+			} else {
+				g.Expect(err).ToNot(HaveOccurred())
+			}
 			g.Expect(got).To(Equal(tt.want))
 
 			g.Expect(index.Index()).To(Equal(tt.assertIndex.Index()))
@@ -1491,6 +1659,307 @@ func TestBucketReconciler_notify(t *testing.T) {
 				if tt.wantEvent != "" {
 					t.Errorf("expected some event to be emitted")
 				}
+			}
+		})
+	}
+}
+
+func TestBucketReconciler_getProxyURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		bucket      *bucketv1.Bucket
+		objects     []client.Object
+		expectedURL string
+		expectedErr string
+	}{
+		{
+			name: "empty proxySecretRef",
+			bucket: &bucketv1.Bucket{
+				Spec: bucketv1.BucketSpec{
+					ProxySecretRef: nil,
+				},
+			},
+		},
+		{
+			name: "non-existing proxySecretRef",
+			bucket: &bucketv1.Bucket{
+				Spec: bucketv1.BucketSpec{
+					ProxySecretRef: &meta.LocalObjectReference{
+						Name: "non-existing",
+					},
+				},
+			},
+			expectedErr: "failed to get secret '/non-existing': secrets \"non-existing\" not found",
+		},
+		{
+			name: "missing address in proxySecretRef",
+			bucket: &bucketv1.Bucket{
+				Spec: bucketv1.BucketSpec{
+					ProxySecretRef: &meta.LocalObjectReference{
+						Name: "dummy",
+					},
+				},
+			},
+			objects: []client.Object{
+				&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "dummy",
+					},
+					Data: map[string][]byte{},
+				},
+			},
+			expectedErr: "invalid proxy secret '/dummy': key 'address' is missing",
+		},
+		{
+			name: "invalid address in proxySecretRef",
+			bucket: &bucketv1.Bucket{
+				Spec: bucketv1.BucketSpec{
+					ProxySecretRef: &meta.LocalObjectReference{
+						Name: "dummy",
+					},
+				},
+			},
+			objects: []client.Object{
+				&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "dummy",
+					},
+					Data: map[string][]byte{
+						"address": {0x7f},
+					},
+				},
+			},
+			expectedErr: "failed to parse proxy address '\x7f': parse \"\\x7f\": net/url: invalid control character in URL",
+		},
+		{
+			name: "no user, no password",
+			bucket: &bucketv1.Bucket{
+				Spec: bucketv1.BucketSpec{
+					ProxySecretRef: &meta.LocalObjectReference{
+						Name: "dummy",
+					},
+				},
+			},
+			objects: []client.Object{
+				&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "dummy",
+					},
+					Data: map[string][]byte{
+						"address": []byte("http://proxy.example.com"),
+					},
+				},
+			},
+			expectedURL: "http://proxy.example.com",
+		},
+		{
+			name: "user, no password",
+			bucket: &bucketv1.Bucket{
+				Spec: bucketv1.BucketSpec{
+					ProxySecretRef: &meta.LocalObjectReference{
+						Name: "dummy",
+					},
+				},
+			},
+			objects: []client.Object{
+				&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "dummy",
+					},
+					Data: map[string][]byte{
+						"address":  []byte("http://proxy.example.com"),
+						"username": []byte("user"),
+					},
+				},
+			},
+			expectedURL: "http://user:@proxy.example.com",
+		},
+		{
+			name: "no user, password",
+			bucket: &bucketv1.Bucket{
+				Spec: bucketv1.BucketSpec{
+					ProxySecretRef: &meta.LocalObjectReference{
+						Name: "dummy",
+					},
+				},
+			},
+			objects: []client.Object{
+				&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "dummy",
+					},
+					Data: map[string][]byte{
+						"address":  []byte("http://proxy.example.com"),
+						"password": []byte("password"),
+					},
+				},
+			},
+			expectedURL: "http://:password@proxy.example.com",
+		},
+		{
+			name: "user, password",
+			bucket: &bucketv1.Bucket{
+				Spec: bucketv1.BucketSpec{
+					ProxySecretRef: &meta.LocalObjectReference{
+						Name: "dummy",
+					},
+				},
+			},
+			objects: []client.Object{
+				&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "dummy",
+					},
+					Data: map[string][]byte{
+						"address":  []byte("http://proxy.example.com"),
+						"username": []byte("user"),
+						"password": []byte("password"),
+					},
+				},
+			},
+			expectedURL: "http://user:password@proxy.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			c := fakeclient.NewClientBuilder().
+				WithScheme(testEnv.Scheme()).
+				WithObjects(tt.objects...).
+				Build()
+
+			r := &BucketReconciler{
+				Client: c,
+			}
+
+			u, err := r.getProxyURL(ctx, tt.bucket)
+			if tt.expectedErr == "" {
+				g.Expect(err).To(BeNil())
+			} else {
+				g.Expect(err.Error()).To(ContainSubstring(tt.expectedErr))
+			}
+			if tt.expectedURL == "" {
+				g.Expect(u).To(BeNil())
+			} else {
+				g.Expect(u.String()).To(Equal(tt.expectedURL))
+			}
+		})
+	}
+}
+
+func TestBucketReconciler_APIServerValidation_STS(t *testing.T) {
+	tests := []struct {
+		name           string
+		bucketProvider string
+		stsConfig      *bucketv1.BucketSTSSpec
+		err            string
+	}{
+		{
+			name:           "gcp unsupported",
+			bucketProvider: "gcp",
+			stsConfig: &bucketv1.BucketSTSSpec{
+				Provider: "aws",
+				Endpoint: "http://test",
+			},
+			err: "STS configuration is only supported for the 'aws' Bucket provider",
+		},
+		{
+			name:           "azure unsupported",
+			bucketProvider: "azure",
+			stsConfig: &bucketv1.BucketSTSSpec{
+				Provider: "aws",
+				Endpoint: "http://test",
+			},
+			err: "STS configuration is only supported for the 'aws' Bucket provider",
+		},
+		{
+			name:           "generic unsupported",
+			bucketProvider: "generic",
+			stsConfig: &bucketv1.BucketSTSSpec{
+				Provider: "aws",
+				Endpoint: "http://test",
+			},
+			err: "STS configuration is only supported for the 'aws' Bucket provider",
+		},
+		{
+			name:           "aws supported",
+			bucketProvider: "aws",
+			stsConfig: &bucketv1.BucketSTSSpec{
+				Provider: "aws",
+				Endpoint: "http://test",
+			},
+		},
+		{
+			name:           "invalid endpoint",
+			bucketProvider: "aws",
+			stsConfig: &bucketv1.BucketSTSSpec{
+				Provider: "aws",
+				Endpoint: "test",
+			},
+			err: "spec.sts.endpoint in body should match '^(http|https)://.*$'",
+		},
+		{
+			name:           "gcp can be created without STS config",
+			bucketProvider: "gcp",
+		},
+		{
+			name:           "azure can be created without STS config",
+			bucketProvider: "azure",
+		},
+		{
+			name:           "generic can be created without STS config",
+			bucketProvider: "generic",
+		},
+		{
+			name:           "aws can be created without STS config",
+			bucketProvider: "aws",
+		},
+		// Can't be tested at present with only one allowed sts provider.
+		// {
+		// 	name:           "ldap unsupported for aws",
+		// 	bucketProvider: "aws",
+		// 	stsConfig: &bucketv1.BucketSTSSpec{
+		// 		Provider: "ldap",
+		// 		Endpoint: "http://test",
+		// 	},
+		// 	err: "'aws' is the only supported STS provider for the 'aws' Bucket provider",
+		// },
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			obj := &bucketv1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "bucket-reconcile-",
+					Namespace:    "default",
+				},
+				Spec: bucketv1.BucketSpec{
+					Provider:   tt.bucketProvider,
+					BucketName: "test",
+					Endpoint:   "test",
+					Suspend:    true,
+					Interval:   metav1.Duration{Duration: interval},
+					Timeout:    &metav1.Duration{Duration: timeout},
+					STS:        tt.stsConfig,
+				},
+			}
+
+			err := testEnv.Create(ctx, obj)
+			if err == nil {
+				defer func() {
+					err := testEnv.Delete(ctx, obj)
+					g.Expect(err).NotTo(HaveOccurred())
+				}()
+			}
+
+			if tt.err != "" {
+				g.Expect(err.Error()).To(ContainSubstring(tt.err))
+			} else {
+				g.Expect(err).NotTo(HaveOccurred())
 			}
 		})
 	}

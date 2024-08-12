@@ -749,6 +749,23 @@ HTTP endpoint requires enabling [`.spec.insecure`](#insecure).
 Some endpoints require the specification of a [`.spec.region`](#region),
 see [Provider](#provider) for more (provider specific) examples.
 
+### STS
+
+`.spec.sts` is an optional field for specifying the Security Token Service
+configuration. A Security Token Service (STS) is a web service that issues
+temporary security credentials. By adding this field, one may specify the
+STS endpoint from where temporary credentials will be fetched.
+
+If using `.spec.sts`, the following fields are required:
+
+- `.spec.sts.provider`, the Security Token Service provider. The only supported
+  option is `aws`.
+- `.spec.sts.endpoint`, the HTTP/S endpoint of the Security Token Service. In
+  the case of AWS, this can be `https://sts.amazonaws.com`, or a Regional STS
+  Endpoint, or an Interface Endpoint created inside a VPC.
+
+This field is only supported for the `aws` bucket provider.
+
 ### Bucket name
 
 `.spec.bucketName` is a required field that specifies which object storage
@@ -762,6 +779,100 @@ See [Provider](#provider) for more (provider specific) examples.
 [`.spec.bucketName`](#bucket-name) is located in.
 
 See [Provider](#provider) for more (provider specific) examples.
+
+### Cert secret reference
+
+`.spec.certSecretRef.name` is an optional field to specify a secret containing
+TLS certificate data. The secret can contain the following keys:
+
+* `tls.crt` and `tls.key`, to specify the client certificate and private key used
+for TLS client authentication. These must be used in conjunction, i.e.
+specifying one without the other will lead to an error.
+* `ca.crt`, to specify the CA certificate used to verify the server, which is
+required if the server is using a self-signed certificate.
+
+If the server is using a self-signed certificate and has TLS client
+authentication enabled, all three values are required.
+
+The Secret should be of type `Opaque` or `kubernetes.io/tls`. All the files in
+the Secret are expected to be [PEM-encoded][pem-encoding]. Assuming you have
+three files; `client.key`, `client.crt` and `ca.crt` for the client private key,
+client certificate and the CA certificate respectively, you can generate the
+required Secret using the `flux create secret tls` command:
+
+```sh
+flux create secret tls minio-tls --tls-key-file=client.key --tls-crt-file=client.crt --ca-crt-file=ca.crt
+```
+
+If TLS client authentication is not required, you can generate the secret with:
+
+```sh
+flux create secret tls minio-tls --ca-crt-file=ca.crt
+```
+
+This API is only supported for the `generic` [provider](#provider).
+
+Example usage:
+
+```yaml
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: Bucket
+metadata:
+  name: example
+  namespace: example
+spec:
+  interval: 5m
+  bucketName: example
+  provider: generic
+  endpoint: minio.example.com
+  certSecretRef:
+    name: minio-tls
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-tls
+  namespace: example
+type: kubernetes.io/tls # or Opaque
+stringData:
+  tls.crt: <PEM-encoded cert>
+  tls.key: <PEM-encoded key>
+  ca.crt: <PEM-encoded cert>
+```
+
+### Proxy secret reference
+
+`.spec.proxySecretRef.name` is an optional field used to specify the name of a
+Secret that contains the proxy settings for the object. These settings are used
+for all the remote operations related to the Bucket.
+The Secret can contain three keys:
+
+- `address`, to specify the address of the proxy server. This is a required key.
+- `username`, to specify the username to use if the proxy server is protected by
+   basic authentication. This is an optional key.
+- `password`, to specify the password to use if the proxy server is protected by
+   basic authentication. This is an optional key.
+
+Example:
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: http-proxy
+type: Opaque
+stringData:
+  address: http://proxy.com
+  username: mandalorian
+  password: grogu
+```
+
+Proxying can also be configured in the source-controller Deployment directly by
+using the standard environment variables such as `HTTPS_PROXY`, `ALL_PROXY`, etc.
+
+`.spec.proxySecretRef.name` takes precedence over all environment variables.
 
 ### Insecure
 
