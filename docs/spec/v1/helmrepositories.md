@@ -19,7 +19,7 @@ repository](https://github.com/stefanprodan/podinfo)):
 
 ```yaml
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: HelmRepository
 metadata:
   name: podinfo
@@ -98,7 +98,7 @@ The following is an example of an OCI HelmRepository.
 
 ```yaml
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: HelmRepository
 metadata:
   name: podinfo
@@ -376,7 +376,7 @@ For example:
 
 ```yaml
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: HelmRepository
 metadata:
   name: example
@@ -401,7 +401,7 @@ OCI Helm repository example:
 
 ```yaml
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: HelmRepository
 metadata:
   name: podinfo
@@ -467,7 +467,7 @@ Example usage:
 
 ```yaml
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: HelmRepository
 metadata:
   name: example
@@ -564,7 +564,7 @@ In your YAML declaration:
 
 ```yaml
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: HelmRepository
 metadata:
   name: <repository-name>
@@ -595,7 +595,7 @@ In your YAML declaration, comment out (or remove) the field:
 
 ```yaml
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: HelmRepository
 metadata:
   name: <repository-name>
@@ -708,7 +708,7 @@ The Artifact file is an exact copy of the Helm repository index YAML
 
 ```yaml
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: HelmRepository
 metadata:
   name: <repository-name>
