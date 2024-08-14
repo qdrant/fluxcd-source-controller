@@ -288,7 +288,7 @@ func (in *GitRepository) GetArtifact() *apiv1.Artifact {
 
 // +genclient
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=gitrepo
+// +kubebuilder:resource:shortName=qdrantgitrepo
 // +kubebuilder:subresource:status
 // +kubebuilder:deprecatedversion:warning="v1beta2 GitRepository is deprecated, upgrade to v1"
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.spec.url`

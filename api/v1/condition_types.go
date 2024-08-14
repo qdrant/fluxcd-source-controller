@@ -16,7 +16,7 @@ limitations under the License.
 
 package v1
 
-const SourceFinalizer = "finalizers.fluxcd.io"
+const SourceFinalizer = "finalizers.qdrant.io"
 
 const (
 	// ArtifactInStorageCondition indicates the availability of the Artifact in
