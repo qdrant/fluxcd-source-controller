@@ -137,6 +137,7 @@ type HelmChartReconciler struct {
 	Storage                 *Storage
 	Getters                 helmgetter.Providers
 	ControllerName          string
+	LeaderElection          *bool
 
 	Cache *cache.Cache
 	TTL   time.Duration
@@ -196,7 +197,8 @@ func (r *HelmChartReconciler) SetupWithManagerAndOptions(ctx context.Context, mg
 			builder.WithPredicates(SourceRevisionChangePredicate{}),
 		).
 		WithOptions(controller.Options{
-			RateLimiter: opts.RateLimiter,
+			RateLimiter:        opts.RateLimiter,
+			NeedLeaderElection: r.LeaderElection,
 		}).
 		Complete(r)
 }

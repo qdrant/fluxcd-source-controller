@@ -111,6 +111,7 @@ type HelmRepositoryReconciler struct {
 	Getters        helmgetter.Providers
 	Storage        *Storage
 	ControllerName string
+	LeaderElection *bool
 
 	Cache *cache.Cache
 	TTL   time.Duration
@@ -145,7 +146,8 @@ func (r *HelmRepositoryReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, 
 			),
 		).
 		WithOptions(controller.Options{
-			RateLimiter: opts.RateLimiter,
+			RateLimiter:        opts.RateLimiter,
+			NeedLeaderElection: r.LeaderElection,
 		}).
 		Complete(r)
 }
