@@ -22,8 +22,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/ratelimiter"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var (
@@ -57,7 +58,7 @@ type SourceAdapter struct {
 	LeaderElection    *bool
 }
 type ReconcilerOptions struct {
-	RateLimiter               ratelimiter.RateLimiter
+	RateLimiter               workqueue.TypedRateLimiter[reconcile.Request]
 	DependencyRequeueInterval time.Duration
 }
 
