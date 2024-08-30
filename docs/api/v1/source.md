@@ -2,20 +2,20 @@
 <p>Packages:</p>
 <ul class="simple">
 <li>
-<a href="#source.toolkit.fluxcd.io%2fv1">source.toolkit.fluxcd.io/v1</a>
+<a href="#cd.qdrant.io%2fv1">cd.qdrant.io/v1</a>
 </li>
 </ul>
-<h2 id="source.toolkit.fluxcd.io/v1">source.toolkit.fluxcd.io/v1</h2>
+<h2 id="cd.qdrant.io/v1">cd.qdrant.io/v1</h2>
 <p>Package v1 contains API Schema definitions for the source v1 API group</p>
 Resource Types:
 <ul class="simple"><li>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepository">GitRepository</a>
+<a href="#cd.qdrant.io/v1.GitRepository">GitRepository</a>
 </li><li>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChart">HelmChart</a>
+<a href="#cd.qdrant.io/v1.HelmChart">HelmChart</a>
 </li><li>
-<a href="#source.toolkit.fluxcd.io/v1.HelmRepository">HelmRepository</a>
+<a href="#cd.qdrant.io/v1.HelmRepository">HelmRepository</a>
 </li></ul>
-<h3 id="source.toolkit.fluxcd.io/v1.GitRepository">GitRepository
+<h3 id="cd.qdrant.io/v1.GitRepository">GitRepository
 </h3>
 <p>GitRepository is the Schema for the gitrepositories API.</p>
 <div class="md-typeset__scrollwrap">
@@ -33,7 +33,7 @@ Resource Types:
 <code>apiVersion</code><br>
 string</td>
 <td>
-<code>source.toolkit.fluxcd.io/v1</code>
+<code>cd.qdrant.io/v1</code>
 </td>
 </tr>
 <tr>
@@ -63,7 +63,7 @@ Refer to the Kubernetes API documentation for the fields of the
 <td>
 <code>spec</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositorySpec">
+<a href="#cd.qdrant.io/v1.GitRepositorySpec">
 GitRepositorySpec
 </a>
 </em>
@@ -135,7 +135,7 @@ Kubernetes meta/v1.Duration
 <td>
 <code>ref</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryRef">
+<a href="#cd.qdrant.io/v1.GitRepositoryRef">
 GitRepositoryRef
 </a>
 </em>
@@ -150,7 +150,7 @@ changes, defaults to the &lsquo;master&rsquo; branch.</p>
 <td>
 <code>verify</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryVerification">
+<a href="#cd.qdrant.io/v1.GitRepositoryVerification">
 GitRepositoryVerification
 </a>
 </em>
@@ -220,7 +220,7 @@ the GitRepository as cloned from the URL, using their default settings.</p>
 <td>
 <code>include</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryInclude">
+<a href="#cd.qdrant.io/v1.GitRepositoryInclude">
 []GitRepositoryInclude
 </a>
 </em>
@@ -238,7 +238,7 @@ should be included in the Artifact produced for this GitRepository.</p>
 <td>
 <code>status</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryStatus">
+<a href="#cd.qdrant.io/v1.GitRepositoryStatus">
 GitRepositoryStatus
 </a>
 </em>
@@ -250,7 +250,7 @@ GitRepositoryStatus
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.HelmChart">HelmChart
+<h3 id="cd.qdrant.io/v1.HelmChart">HelmChart
 </h3>
 <p>HelmChart is the Schema for the helmcharts API.</p>
 <div class="md-typeset__scrollwrap">
@@ -268,7 +268,7 @@ GitRepositoryStatus
 <code>apiVersion</code><br>
 string</td>
 <td>
-<code>source.toolkit.fluxcd.io/v1</code>
+<code>cd.qdrant.io/v1</code>
 </td>
 </tr>
 <tr>
@@ -298,7 +298,7 @@ Refer to the Kubernetes API documentation for the fields of the
 <td>
 <code>spec</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartSpec">
+<a href="#cd.qdrant.io/v1.HelmChartSpec">
 HelmChartSpec
 </a>
 </em>
@@ -336,7 +336,7 @@ GitRepository and Bucket sources. Defaults to latest when omitted.</p>
 <td>
 <code>sourceRef</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.LocalHelmChartSourceReference">
+<a href="#cd.qdrant.io/v1.LocalHelmChartSourceReference">
 LocalHelmChartSourceReference
 </a>
 </em>
@@ -421,7 +421,7 @@ source.</p>
 <td>
 <code>verify</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.OCIRepositoryVerification">
+<a href="#cd.qdrant.io/v1.OCIRepositoryVerification">
 OCIRepositoryVerification
 </a>
 </em>
@@ -442,7 +442,7 @@ Chart dependencies, which are not bundled in the umbrella chart artifact, are no
 <td>
 <code>status</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartStatus">
+<a href="#cd.qdrant.io/v1.HelmChartStatus">
 HelmChartStatus
 </a>
 </em>
@@ -454,7 +454,7 @@ HelmChartStatus
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.HelmRepository">HelmRepository
+<h3 id="cd.qdrant.io/v1.HelmRepository">HelmRepository
 </h3>
 <p>HelmRepository is the Schema for the helmrepositories API.</p>
 <div class="md-typeset__scrollwrap">
@@ -472,7 +472,7 @@ HelmChartStatus
 <code>apiVersion</code><br>
 string</td>
 <td>
-<code>source.toolkit.fluxcd.io/v1</code>
+<code>cd.qdrant.io/v1</code>
 </td>
 </tr>
 <tr>
@@ -502,7 +502,7 @@ Refer to the Kubernetes API documentation for the fields of the
 <td>
 <code>spec</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmRepositorySpec">
+<a href="#cd.qdrant.io/v1.HelmRepositorySpec">
 HelmRepositorySpec
 </a>
 </em>
@@ -695,7 +695,7 @@ When not specified, defaults to &lsquo;generic&rsquo;.</p>
 <td>
 <code>status</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmRepositoryStatus">
+<a href="#cd.qdrant.io/v1.HelmRepositoryStatus">
 HelmRepositoryStatus
 </a>
 </em>
@@ -707,13 +707,13 @@ HelmRepositoryStatus
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.Artifact">Artifact
+<h3 id="cd.qdrant.io/v1.Artifact">Artifact
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryStatus">GitRepositoryStatus</a>, 
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartStatus">HelmChartStatus</a>, 
-<a href="#source.toolkit.fluxcd.io/v1.HelmRepositoryStatus">HelmRepositoryStatus</a>)
+<a href="#cd.qdrant.io/v1.GitRepositoryStatus">GitRepositoryStatus</a>, 
+<a href="#cd.qdrant.io/v1.HelmChartStatus">HelmChartStatus</a>, 
+<a href="#cd.qdrant.io/v1.HelmRepositoryStatus">HelmRepositoryStatus</a>)
 </p>
 <p>Artifact represents the output of a Source reconciliation.</p>
 <div class="md-typeset__scrollwrap">
@@ -818,12 +818,12 @@ map[string]string
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.GitRepositoryInclude">GitRepositoryInclude
+<h3 id="cd.qdrant.io/v1.GitRepositoryInclude">GitRepositoryInclude
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositorySpec">GitRepositorySpec</a>, 
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryStatus">GitRepositoryStatus</a>)
+<a href="#cd.qdrant.io/v1.GitRepositorySpec">GitRepositorySpec</a>, 
+<a href="#cd.qdrant.io/v1.GitRepositoryStatus">GitRepositoryStatus</a>)
 </p>
 <p>GitRepositoryInclude specifies a local reference to a GitRepository which
 Artifact (sub-)contents must be included, and where they should be placed.</p>
@@ -881,11 +881,11 @@ the GitRepositoryRef.</p>
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.GitRepositoryRef">GitRepositoryRef
+<h3 id="cd.qdrant.io/v1.GitRepositoryRef">GitRepositoryRef
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositorySpec">GitRepositorySpec</a>)
+<a href="#cd.qdrant.io/v1.GitRepositorySpec">GitRepositorySpec</a>)
 </p>
 <p>GitRepositoryRef specifies the Git reference to resolve and checkout.</p>
 <div class="md-typeset__scrollwrap">
@@ -966,11 +966,11 @@ the commit is expected to exist.</p>
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.GitRepositorySpec">GitRepositorySpec
+<h3 id="cd.qdrant.io/v1.GitRepositorySpec">GitRepositorySpec
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepository">GitRepository</a>)
+<a href="#cd.qdrant.io/v1.GitRepository">GitRepository</a>)
 </p>
 <p>GitRepositorySpec specifies the required configuration to produce an
 Artifact for a Git repository.</p>
@@ -1047,7 +1047,7 @@ Kubernetes meta/v1.Duration
 <td>
 <code>ref</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryRef">
+<a href="#cd.qdrant.io/v1.GitRepositoryRef">
 GitRepositoryRef
 </a>
 </em>
@@ -1062,7 +1062,7 @@ changes, defaults to the &lsquo;master&rsquo; branch.</p>
 <td>
 <code>verify</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryVerification">
+<a href="#cd.qdrant.io/v1.GitRepositoryVerification">
 GitRepositoryVerification
 </a>
 </em>
@@ -1132,7 +1132,7 @@ the GitRepository as cloned from the URL, using their default settings.</p>
 <td>
 <code>include</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryInclude">
+<a href="#cd.qdrant.io/v1.GitRepositoryInclude">
 []GitRepositoryInclude
 </a>
 </em>
@@ -1147,11 +1147,11 @@ should be included in the Artifact produced for this GitRepository.</p>
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.GitRepositoryStatus">GitRepositoryStatus
+<h3 id="cd.qdrant.io/v1.GitRepositoryStatus">GitRepositoryStatus
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepository">GitRepository</a>)
+<a href="#cd.qdrant.io/v1.GitRepository">GitRepository</a>)
 </p>
 <p>GitRepositoryStatus records the observed state of a Git repository.</p>
 <div class="md-typeset__scrollwrap">
@@ -1195,7 +1195,7 @@ object.</p>
 <td>
 <code>artifact</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.Artifact">
+<a href="#cd.qdrant.io/v1.Artifact">
 Artifact
 </a>
 </em>
@@ -1209,7 +1209,7 @@ Artifact
 <td>
 <code>includedArtifacts</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.Artifact">
+<a href="#cd.qdrant.io/v1.Artifact">
 []Artifact
 </a>
 </em>
@@ -1250,7 +1250,7 @@ configuration used to produce the current Artifact.</p>
 <td>
 <code>observedInclude</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryInclude">
+<a href="#cd.qdrant.io/v1.GitRepositoryInclude">
 []GitRepositoryInclude
 </a>
 </em>
@@ -1265,7 +1265,7 @@ produce the current Artifact.</p>
 <td>
 <code>sourceVerificationMode</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitVerificationMode">
+<a href="#cd.qdrant.io/v1.GitVerificationMode">
 GitVerificationMode
 </a>
 </em>
@@ -1295,11 +1295,11 @@ github.com/fluxcd/pkg/apis/meta.ReconcileRequestStatus
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.GitRepositoryVerification">GitRepositoryVerification
+<h3 id="cd.qdrant.io/v1.GitRepositoryVerification">GitRepositoryVerification
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositorySpec">GitRepositorySpec</a>)
+<a href="#cd.qdrant.io/v1.GitRepositorySpec">GitRepositorySpec</a>)
 </p>
 <p>GitRepositoryVerification specifies the Git commit signature verification
 strategy.</p>
@@ -1317,7 +1317,7 @@ strategy.</p>
 <td>
 <code>mode</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.GitVerificationMode">
+<a href="#cd.qdrant.io/v1.GitVerificationMode">
 GitVerificationMode
 </a>
 </em>
@@ -1348,19 +1348,19 @@ authors.</p>
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.GitVerificationMode">GitVerificationMode
+<h3 id="cd.qdrant.io/v1.GitVerificationMode">GitVerificationMode
 (<code>string</code> alias)</h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryStatus">GitRepositoryStatus</a>, 
-<a href="#source.toolkit.fluxcd.io/v1.GitRepositoryVerification">GitRepositoryVerification</a>)
+<a href="#cd.qdrant.io/v1.GitRepositoryStatus">GitRepositoryStatus</a>, 
+<a href="#cd.qdrant.io/v1.GitRepositoryVerification">GitRepositoryVerification</a>)
 </p>
 <p>GitVerificationMode specifies the verification mode for a Git repository.</p>
-<h3 id="source.toolkit.fluxcd.io/v1.HelmChartSpec">HelmChartSpec
+<h3 id="cd.qdrant.io/v1.HelmChartSpec">HelmChartSpec
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChart">HelmChart</a>)
+<a href="#cd.qdrant.io/v1.HelmChart">HelmChart</a>)
 </p>
 <p>HelmChartSpec specifies the desired state of a Helm chart.</p>
 <div class="md-typeset__scrollwrap">
@@ -1402,7 +1402,7 @@ GitRepository and Bucket sources. Defaults to latest when omitted.</p>
 <td>
 <code>sourceRef</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.LocalHelmChartSourceReference">
+<a href="#cd.qdrant.io/v1.LocalHelmChartSourceReference">
 LocalHelmChartSourceReference
 </a>
 </em>
@@ -1487,7 +1487,7 @@ source.</p>
 <td>
 <code>verify</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.OCIRepositoryVerification">
+<a href="#cd.qdrant.io/v1.OCIRepositoryVerification">
 OCIRepositoryVerification
 </a>
 </em>
@@ -1505,11 +1505,11 @@ Chart dependencies, which are not bundled in the umbrella chart artifact, are no
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.HelmChartStatus">HelmChartStatus
+<h3 id="cd.qdrant.io/v1.HelmChartStatus">HelmChartStatus
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChart">HelmChart</a>)
+<a href="#cd.qdrant.io/v1.HelmChart">HelmChart</a>)
 </p>
 <p>HelmChartStatus records the observed state of the HelmChart.</p>
 <div class="md-typeset__scrollwrap">
@@ -1607,7 +1607,7 @@ BucketStatus.Artifact data is recommended.</p>
 <td>
 <code>artifact</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.Artifact">
+<a href="#cd.qdrant.io/v1.Artifact">
 Artifact
 </a>
 </em>
@@ -1636,11 +1636,11 @@ github.com/fluxcd/pkg/apis/meta.ReconcileRequestStatus
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.HelmRepositorySpec">HelmRepositorySpec
+<h3 id="cd.qdrant.io/v1.HelmRepositorySpec">HelmRepositorySpec
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmRepository">HelmRepository</a>)
+<a href="#cd.qdrant.io/v1.HelmRepository">HelmRepository</a>)
 </p>
 <p>HelmRepositorySpec specifies the required configuration to produce an
 Artifact for a Helm repository index YAML.</p>
@@ -1835,11 +1835,11 @@ When not specified, defaults to &lsquo;generic&rsquo;.</p>
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.HelmRepositoryStatus">HelmRepositoryStatus
+<h3 id="cd.qdrant.io/v1.HelmRepositoryStatus">HelmRepositoryStatus
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmRepository">HelmRepository</a>)
+<a href="#cd.qdrant.io/v1.HelmRepository">HelmRepository</a>)
 </p>
 <p>HelmRepositoryStatus records the observed state of the HelmRepository.</p>
 <div class="md-typeset__scrollwrap">
@@ -1897,7 +1897,7 @@ HelmRepositoryStatus.Artifact data is recommended.</p>
 <td>
 <code>artifact</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.Artifact">
+<a href="#cd.qdrant.io/v1.Artifact">
 Artifact
 </a>
 </em>
@@ -1926,11 +1926,11 @@ github.com/fluxcd/pkg/apis/meta.ReconcileRequestStatus
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.LocalHelmChartSourceReference">LocalHelmChartSourceReference
+<h3 id="cd.qdrant.io/v1.LocalHelmChartSourceReference">LocalHelmChartSourceReference
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartSpec">HelmChartSpec</a>)
+<a href="#cd.qdrant.io/v1.HelmChartSpec">HelmChartSpec</a>)
 </p>
 <p>LocalHelmChartSourceReference contains enough information to let you locate
 the typed referenced object at namespace level.</p>
@@ -1983,11 +1983,11 @@ string
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.OCIRepositoryVerification">OCIRepositoryVerification
+<h3 id="cd.qdrant.io/v1.OCIRepositoryVerification">OCIRepositoryVerification
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartSpec">HelmChartSpec</a>)
+<a href="#cd.qdrant.io/v1.HelmChartSpec">HelmChartSpec</a>)
 </p>
 <p>OCIRepositoryVerification verifies the authenticity of an OCI Artifact</p>
 <div class="md-typeset__scrollwrap">
@@ -2030,7 +2030,7 @@ trusted public keys.</p>
 <td>
 <code>matchOIDCIdentity</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.OIDCIdentityMatch">
+<a href="#cd.qdrant.io/v1.OIDCIdentityMatch">
 []OIDCIdentityMatch
 </a>
 </em>
@@ -2047,11 +2047,11 @@ specified matchers match against the identity.</p>
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.OIDCIdentityMatch">OIDCIdentityMatch
+<h3 id="cd.qdrant.io/v1.OIDCIdentityMatch">OIDCIdentityMatch
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.OCIRepositoryVerification">OCIRepositoryVerification</a>)
+<a href="#cd.qdrant.io/v1.OCIRepositoryVerification">OCIRepositoryVerification</a>)
 </p>
 <p>OIDCIdentityMatch specifies options for verifying the certificate identity,
 i.e. the issuer and the subject of the certificate.</p>
@@ -2095,11 +2095,11 @@ be a valid Go regular expression.</p>
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.Source">Source
+<h3 id="cd.qdrant.io/v1.Source">Source
 </h3>
 <p>Source interface must be supported by all API types.
 Source is the interface that provides generic access to the Artifact and
-interval. It must be supported by all kinds of the source.toolkit.fluxcd.io
+interval. It must be supported by all kinds of the cd.qdrant.io
 API group.</p>
 <div class="admonition note">
 <p class="last">This page was automatically generated with <code>gen-crd-api-reference-docs</code></p>

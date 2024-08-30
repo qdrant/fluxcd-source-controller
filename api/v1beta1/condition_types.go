@@ -16,7 +16,7 @@ limitations under the License.
 
 package v1beta1
 
-const SourceFinalizer = "finalizers.fluxcd.io"
+const SourceFinalizer = "finalizers.qdrant.io"
 
 const (
 	// URLInvalidReason represents the fact that a given source has an invalid URL.

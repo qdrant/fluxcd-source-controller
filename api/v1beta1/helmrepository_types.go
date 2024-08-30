@@ -182,7 +182,7 @@ func (in *HelmRepository) GetInterval() metav1.Duration {
 
 // +genclient
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=helmrepo
+// +kubebuilder:resource:shortName=qdranthelmrepo
 // +kubebuilder:subresource:status
 // +kubebuilder:deprecatedversion:warning="v1beta1 HelmRepository is deprecated, upgrade to v1"
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.spec.url`

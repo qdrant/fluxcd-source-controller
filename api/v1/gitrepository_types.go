@@ -311,7 +311,7 @@ func (v *GitRepositoryVerification) VerifyTag() bool {
 // +genclient
 // +kubebuilder:storageversion
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=gitrepo
+// +kubebuilder:resource:shortName=qdrantgitrepo
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.spec.url`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description=""

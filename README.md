@@ -6,6 +6,37 @@
 [![license](https://img.shields.io/github/license/fluxcd/source-controller.svg)](https://github.com/fluxcd/source-controller/blob/main/LICENSE)
 [![release](https://img.shields.io/github/release/fluxcd/source-controller/all.svg)](https://github.com/fluxcd/source-controller/releases)
 
+## About this fork
+
+This fork is used by the
+[qdrant-cloud-agent](https://github.com/qdrant/qdrant-cloud-agent/). The main
+reason behind forking the upstream project is to be able to distribute the CRDs of this
+project without risk of collision in case the customer is using Flux CD in their
+K8s cluster. The main change between the fork and upstream consist of renaming the
+API group names, replacing the ones from fluxcd (ex: `source.toolkit.fluxcd.io`)
+by our custom ones.
+
+### Maintaining the fork up to date
+
+- Configure and fetch upstream/main.
+- Create your development branch from origin/main and merge upstream/main into
+  it. You can run the merge with `-X theirs` option.
+- Solve the git conflicts if any.
+- As there might be new files or content added in upstream, we might need to
+  rename groups again. You can do that executing
+  `./scripts/rename-api-groups.sh`.
+- Run `go mod tidy` to clean up the dependencies and execute the tests of the project with `make test`.
+- Ideally, they are passing. Otherwise, you need to work on fixing any possible
+  issue.
+- Push your development branch. After that, you would need to test it using it
+  in the cloud-agent to confirm everything works as expected.
+- Once you confirm it works fine, create a PR for review.
+- **Note for the reviewer:** The merge commit from upstream/main doesn't make
+  sense to review it. Focus on the commits with the changes relevant for the
+  project.
+
+---
+
 The source-controller is a Kubernetes operator, specialised in artifacts acquisition
 from external sources such as Git, OCI, Helm repositories and S3-compatible buckets.
 The source-controller implements the
