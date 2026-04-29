@@ -136,6 +136,7 @@ type GitRepositoryReconciler struct {
 	Storage        *storage.Storage
 	ControllerName string
 	TokenCache     *cache.TokenCache
+	LeaderElection *bool
 
 	requeueDependency time.Duration
 	features          map[string]bool

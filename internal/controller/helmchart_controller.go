@@ -135,6 +135,7 @@ type HelmChartReconciler struct {
 	Getters               helmgetter.Providers
 	ControllerName        string
 	CosignVerifierFactory *scosign.CosignVerifierFactory
+	LeaderElection        *bool
 
 	Cache *cache.Cache
 	TTL   time.Duration
