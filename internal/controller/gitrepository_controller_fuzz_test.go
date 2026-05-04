@@ -59,7 +59,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	intstorage "github.com/fluxcd/pkg/artifact/digest"
+	artcfg "github.com/fluxcd/pkg/artifact/config"
+	artdigest "github.com/fluxcd/pkg/artifact/digest"
+	artstorage "github.com/fluxcd/pkg/artifact/storage"
 	"github.com/fluxcd/pkg/gittestserver"
 	"github.com/fluxcd/pkg/runtime/controller"
 	"github.com/fluxcd/pkg/runtime/testenv"
@@ -78,7 +80,7 @@ var (
 	cfg              *rest.Config
 	testEnv          *testenv.Environment
 
-	storage *intstorage.Storage
+	artStorage *artstorage.Storage
 
 	examplePublicKey  []byte
 	examplePrivateKey []byte
@@ -451,8 +453,8 @@ func ensureDependencies() error {
 	startEnvServer(func(m manager.Manager) {
 		utilruntime.Must((&GitRepositoryReconciler{
 			Client:  m.GetClient(),
-			Storage: storage,
-		}).SetupWithManagerAndOptions(m, GitRepositoryReconcilerOptions{
+			Storage: artStorage,
+		}).SetupWithManager(m, GitRepositoryReconcilerOptions{
 			RateLimiter: controller.GetDefaultRateLimiter(),
 		}))
 	})
@@ -478,7 +480,14 @@ func startEnvServer(setupReconcilers func(manager.Manager)) *envtest.Environment
 		panic(err)
 	}
 	defer os.RemoveAll(tmpStoragePath)
-	storage, err = intstorage.New(tmpStoragePath, "localhost:5050", time.Minute*1, 2)
+	artStorage, err = artstorage.New(&artcfg.Options{
+		StoragePath:              tmpStoragePath,
+		StorageAddress:           "localhost:5050",
+		StorageAdvAddress:        "localhost:5050",
+		ArtifactRetentionTTL:     time.Minute * 1,
+		ArtifactRetentionRecords: 2,
+		ArtifactDigestAlgo:       artdigest.Canonical.String(),
+	})
 	if err != nil {
 		panic(err)
 	}
