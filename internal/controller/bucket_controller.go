@@ -131,6 +131,7 @@ type BucketReconciler struct {
 	Storage        *storage.Storage
 	ControllerName string
 	TokenCache     *cache.TokenCache
+	LeaderElection *bool
 
 	patchOptions []patch.Option
 }

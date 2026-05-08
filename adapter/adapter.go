@@ -1,22 +1,21 @@
 package adapter
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"time"
 
+	artcfg "github.com/fluxcd/pkg/artifact/config"
+	intdigest "github.com/fluxcd/pkg/artifact/digest"
+	artstore "github.com/fluxcd/pkg/artifact/storage"
 	helper "github.com/fluxcd/pkg/runtime/controller"
 	"github.com/fluxcd/pkg/runtime/events"
-	"github.com/fluxcd/source-controller/internal/helm/registry"
-
-	"context"
-
-	"github.com/fluxcd/source-controller/api/v1beta2"
 	"github.com/fluxcd/source-controller/internal/cache"
 	"github.com/fluxcd/source-controller/internal/controller"
-	intdigest "github.com/fluxcd/source-controller/internal/digest"
+	"github.com/fluxcd/source-controller/internal/helm/registry"
 	"helm.sh/helm/v3/pkg/getter"
 	v1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -25,6 +24,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/fluxcd/source-controller/api/v1beta2"
 )
 
 var (
@@ -63,13 +64,7 @@ type ReconcilerOptions struct {
 }
 
 func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
-	storage := mustInitStorage(
-		adapter.StoragePath,
-		adapter.getFileServerAddress(),
-		60*time.Second,
-		2,
-		intdigest.Canonical.String(),
-	)
+	storage := mustInitStorage(adapter.StoragePath, adapter.getFileServerAddress())
 	cacheRecorder := cache.MustMakeMetrics()
 
 	helmIndexCache, helmIndexCacheItemTTL := mustInitHelmCache(0, "15m", "1m")
@@ -140,13 +135,8 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		return err
 	}
 
-	// Start file server for serving chart archives
 	go func() {
-		// Block until our controller manager is elected leader. We presume our
-		// entire process will terminate if we lose leadership, so we don't need
-		// to handle that.
 		<-mgr.Elected()
-
 		startFileServer(storage.BasePath, adapter.getFileServerAddress())
 	}()
 	return nil
@@ -160,21 +150,20 @@ func (a *SourceAdapter) getFileServerAddress() string {
 	return fmt.Sprintf(":%d", port)
 }
 
-func mustInitStorage(path string, storageAdvAddr string, artifactRetentionTTL time.Duration, artifactRetentionRecords int, artifactDigestAlgo string) *controller.Storage {
+func mustInitStorage(path string, storageAdvAddr string) *artstore.Storage {
 	if storageAdvAddr == "" {
 		storageAdvAddr = determineAdvStorageAddr(storageAdvAddr)
 	}
 
-	if artifactDigestAlgo != intdigest.Canonical.String() {
-		algo, err := intdigest.AlgorithmForName(artifactDigestAlgo)
-		if err != nil {
-			setupLog.Error(err, "unable to configure canonical digest algorithm")
-			os.Exit(1)
-		}
-		intdigest.Canonical = algo
+	opts := artcfg.Options{
+		StoragePath:              path,
+		StorageAdvAddress:        storageAdvAddr,
+		ArtifactRetentionTTL:     60 * time.Second,
+		ArtifactRetentionRecords: 2,
+		ArtifactDigestAlgo:       intdigest.Canonical.String(),
 	}
 
-	storage, err := controller.NewStorage(path, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
+	storage, err := artstore.New(&opts)
 	if err != nil {
 		setupLog.Error(err, "unable to initialise storage")
 		os.Exit(1)
