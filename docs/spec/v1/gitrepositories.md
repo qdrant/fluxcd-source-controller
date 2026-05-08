@@ -652,7 +652,7 @@ checkout when cloning the repository. If specified, only the specified directory
 contents will be present in the artifact produced for this repository.
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: GitRepository
 metadata:
   name: podinfo
