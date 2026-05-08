@@ -32,6 +32,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/distribution/distribution/v3/configuration"
+	dockerRegistry "github.com/distribution/distribution/v3/registry"
+	_ "github.com/distribution/distribution/v3/registry/auth/htpasswd"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	"github.com/foxcpp/go-mockdns"
 	"github.com/phayes/freeport"
 	"github.com/sirupsen/logrus"
@@ -43,19 +47,17 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
-	"github.com/distribution/distribution/v3/configuration"
-	dockerRegistry "github.com/distribution/distribution/v3/registry"
-	_ "github.com/distribution/distribution/v3/registry/auth/htpasswd"
-	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
-
+	"github.com/fluxcd/pkg/artifact/config"
+	"github.com/fluxcd/pkg/artifact/digest"
+	"github.com/fluxcd/pkg/artifact/storage"
 	"github.com/fluxcd/pkg/runtime/controller"
 	"github.com/fluxcd/pkg/runtime/metrics"
 	"github.com/fluxcd/pkg/runtime/testenv"
 	"github.com/fluxcd/pkg/testserver"
 
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
-	sourcev1beta2 "github.com/fluxcd/source-controller/api/v1beta2"
 	"github.com/fluxcd/source-controller/internal/cache"
 	// +kubebuilder:scaffold:imports
 )
@@ -82,7 +84,7 @@ const (
 var (
 	k8sClient    client.Client
 	testEnv      *testenv.Environment
-	testStorage  *Storage
+	testStorage  *storage.Storage
 	testServer   *testserver.ArtifactServer
 	testMetricsH controller.Metrics
 	ctx          = ctrl.SetupSignalHandler()
@@ -273,7 +275,6 @@ func TestMain(m *testing.M) {
 	initTestTLS()
 
 	utilruntime.Must(sourcev1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(sourcev1beta2.AddToScheme(scheme.Scheme))
 
 	testEnv = testenv.New(
 		testenv.WithCRDPath(filepath.Join("..", "..", "config", "crd", "bases")),
@@ -431,12 +432,20 @@ func initTestTLS() {
 	}
 }
 
-func newTestStorage(s *testserver.HTTPServer) (*Storage, error) {
-	storage, err := NewStorage(s.Root(), s.URL(), retentionTTL, retentionRecords)
+func newTestStorage(s *testserver.HTTPServer) (*storage.Storage, error) {
+	opts := &config.Options{
+		StoragePath:              s.Root(),
+		StorageAddress:           s.URL(),
+		StorageAdvAddress:        s.URL(),
+		ArtifactRetentionTTL:     retentionTTL,
+		ArtifactRetentionRecords: retentionRecords,
+		ArtifactDigestAlgo:       digest.Canonical.String(),
+	}
+	st, err := storage.New(opts)
 	if err != nil {
 		return nil, err
 	}
-	return storage, nil
+	return st, nil
 }
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyz1234567890")
@@ -451,4 +460,9 @@ func randStringRunes(n int) string {
 
 func int64p(i int64) *int64 {
 	return &i
+}
+
+func logOCIRepoStatus(t *testing.T, obj *sourcev1.OCIRepository) {
+	sts, _ := yaml.Marshal(obj.Status)
+	t.Log(string(sts))
 }
