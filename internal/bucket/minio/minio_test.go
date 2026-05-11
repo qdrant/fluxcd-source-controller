@@ -51,7 +51,7 @@ import (
 
 const (
 	objectName string = "test.yaml"
-	objectEtag string = "b07bba5a280b58791bc78fb9fc414b09"
+	objectEtag string = "287adc7d7c21b4e7e397ddf64f624dae"
 )
 
 var (
