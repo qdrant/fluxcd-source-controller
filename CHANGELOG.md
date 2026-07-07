@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.9.2
+
+**Release date:** 2026-07-07
+
+This patch release disables Flux variable substitution on the source-controller
+CRDs by annotating them with `kustomize.toolkit.fluxcd.io/substitute: disabled`,
+so that Kustomizations with post-build substitution enabled no longer corrupt
+the CRD schemas when they contain `${...}` sequences. It also caches the
+registry authorization token during Notation verification, so the token is
+fetched once per verification instead of once per request, reducing
+token-endpoint traffic against the registry.
+
+Fixes:
+- Disable variable substitution in CRDs
+  [#2103](https://github.com/fluxcd/source-controller/pull/2103)
+
+Improvements:
+- Cache registry token during Notation verification
+  [#2105](https://github.com/fluxcd/source-controller/pull/2105)
+
 ## 1.9.1
 
 **Release date:** 2026-06-30
