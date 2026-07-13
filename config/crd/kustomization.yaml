@@ -6,4 +6,5 @@ resources:
 - bases/cd.qdrant.io_helmcharts.yaml
 - bases/cd.qdrant.io_buckets.yaml
 - bases/cd.qdrant.io_ocirepositories.yaml
+- bases/cd.qdrant.io_externalartifacts.yaml
 # +kubebuilder:scaffold:crdkustomizeresource

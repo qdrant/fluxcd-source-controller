@@ -1,0 +1,20 @@
+# permissions for end users to view externalartifacts.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: externalartifacts-viewer-role
+rules:
+- apiGroups:
+  - cd.qdrant.io
+  resources:
+  - externalartifacts
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cd.qdrant.io
+  resources:
+  - externalartifacts/status
+  verbs:
+  - get

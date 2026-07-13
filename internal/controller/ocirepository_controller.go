@@ -39,11 +39,10 @@ import (
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
-	"github.com/sigstore/cosign/v2/pkg/cosign"
+	"github.com/sigstore/cosign/v3/pkg/cosign"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	kuberecorder "k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
@@ -51,6 +50,9 @@ import (
 
 	eventv1 "github.com/fluxcd/pkg/apis/event/v1beta1"
 	"github.com/fluxcd/pkg/apis/meta"
+	"github.com/fluxcd/pkg/artifact/storage"
+	"github.com/fluxcd/pkg/auth"
+	"github.com/fluxcd/pkg/cache"
 	"github.com/fluxcd/pkg/oci"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	helper "github.com/fluxcd/pkg/runtime/controller"
@@ -58,6 +60,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/fluxcd/pkg/runtime/predicates"
 	rreconcile "github.com/fluxcd/pkg/runtime/reconcile"
+	"github.com/fluxcd/pkg/runtime/secrets"
 	"github.com/fluxcd/pkg/sourceignore"
 	"github.com/fluxcd/pkg/tar"
 	"github.com/fluxcd/pkg/version"
@@ -69,19 +72,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
-	ociv1 "github.com/fluxcd/source-controller/api/v1beta2"
 	serror "github.com/fluxcd/source-controller/internal/error"
 	soci "github.com/fluxcd/source-controller/internal/oci"
 	scosign "github.com/fluxcd/source-controller/internal/oci/cosign"
 	"github.com/fluxcd/source-controller/internal/oci/notation"
 	sreconcile "github.com/fluxcd/source-controller/internal/reconcile"
 	"github.com/fluxcd/source-controller/internal/reconcile/summarize"
-	"github.com/fluxcd/source-controller/internal/tls"
 	"github.com/fluxcd/source-controller/internal/util"
 )
 
 // ociRepositoryReadyCondition contains the information required to summarize a
-// v1beta2.OCIRepository Ready Condition.
+// v1.OCIRepository Ready Condition.
 var ociRepositoryReadyCondition = summarize.Conditions{
 	Target: meta.ReadyCondition,
 	Owned: []string{
@@ -128,20 +129,22 @@ func (e invalidOCIURLError) Error() string {
 	return e.err.Error()
 }
 
-// ociRepositoryReconcileFunc is the function type for all the v1beta2.OCIRepository
+// ociRepositoryReconcileFunc is the function type for all the v1.OCIRepository
 // (sub)reconcile functions. The type implementations are grouped and
 // executed serially to perform the complete reconcile of the object.
-type ociRepositoryReconcileFunc func(ctx context.Context, sp *patch.SerialPatcher, obj *ociv1.OCIRepository, metadata *sourcev1.Artifact, dir string) (sreconcile.Result, error)
+type ociRepositoryReconcileFunc func(ctx context.Context, sp *patch.SerialPatcher, obj *sourcev1.OCIRepository, metadata *meta.Artifact, dir string) (sreconcile.Result, error)
 
-// OCIRepositoryReconciler reconciles a v1beta2.OCIRepository object
+// OCIRepositoryReconciler reconciles a v1.OCIRepository object
 type OCIRepositoryReconciler struct {
 	client.Client
 	helper.Metrics
 	kuberecorder.EventRecorder
 
-	Storage           *Storage
-	ControllerName    string
-	requeueDependency time.Duration
+	Storage               *storage.Storage
+	ControllerName        string
+	TokenCache            *cache.TokenCache
+	CosignVerifierFactory *scosign.CosignVerifierFactory
+	requeueDependency     time.Duration
 
 	patchOptions []patch.Option
 }
@@ -151,18 +154,13 @@ type OCIRepositoryReconcilerOptions struct {
 	RateLimiter               workqueue.TypedRateLimiter[reconcile.Request]
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *OCIRepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return r.SetupWithManagerAndOptions(mgr, OCIRepositoryReconcilerOptions{})
-}
-
-func (r *OCIRepositoryReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, opts OCIRepositoryReconcilerOptions) error {
+func (r *OCIRepositoryReconciler) SetupWithManager(mgr ctrl.Manager, opts OCIRepositoryReconcilerOptions) error {
 	r.patchOptions = getPatchOptions(ociRepositoryReadyCondition.Owned, r.ControllerName)
 
 	r.requeueDependency = opts.DependencyRequeueInterval
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ociv1.OCIRepository{}, builder.WithPredicates(
+		For(&sourcev1.OCIRepository{}, builder.WithPredicates(
 			predicate.Or(predicate.GenerationChangedPredicate{}, predicates.ReconcileRequestedPredicate{}),
 		)).
 		WithOptions(controller.Options{
@@ -175,13 +173,14 @@ func (r *OCIRepositoryReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, o
 // +kubebuilder:rbac:groups=cd.qdrant.io,resources=ocirepositories/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cd.qdrant.io,resources=ocirepositories/finalizers,verbs=get;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
 
 func (r *OCIRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	start := time.Now()
 	log := ctrl.LoggerFrom(ctx)
 
 	// Fetch the OCIRepository
-	obj := &ociv1.OCIRepository{}
+	obj := &sourcev1.OCIRepository{}
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -213,9 +212,7 @@ func (r *OCIRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		result, retErr = summarizeHelper.SummarizeAndPatch(ctx, obj, summarizeOpts...)
 
-		// Always record suspend, readiness and duration metrics.
-		r.Metrics.RecordSuspend(ctx, obj, obj.Spec.Suspend)
-		r.Metrics.RecordReadiness(ctx, obj)
+		// Always record duration metrics.
 		r.Metrics.RecordDuration(ctx, obj, start)
 	}()
 
@@ -255,7 +252,7 @@ func (r *OCIRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 // reconcile iterates through the ociRepositoryReconcileFunc tasks for the
 // object. It returns early on the first call that returns
 // reconcile.ResultRequeue, or produces an error.
-func (r *OCIRepositoryReconciler) reconcile(ctx context.Context, sp *patch.SerialPatcher, obj *ociv1.OCIRepository, reconcilers []ociRepositoryReconcileFunc) (sreconcile.Result, error) {
+func (r *OCIRepositoryReconciler) reconcile(ctx context.Context, sp *patch.SerialPatcher, obj *sourcev1.OCIRepository, reconcilers []ociRepositoryReconcileFunc) (sreconcile.Result, error) {
 	oldObj := obj.DeepCopy()
 
 	rreconcile.ProgressiveStatus(false, obj, meta.ProgressingReason, "reconciliation in progress")
@@ -300,7 +297,7 @@ func (r *OCIRepositoryReconciler) reconcile(ctx context.Context, sp *patch.Seria
 	var (
 		res      sreconcile.Result
 		resErr   error
-		metadata = sourcev1.Artifact{}
+		metadata = meta.Artifact{}
 	)
 
 	// Run the sub-reconcilers and build the result of reconciliation.
@@ -327,10 +324,10 @@ func (r *OCIRepositoryReconciler) reconcile(ctx context.Context, sp *patch.Seria
 }
 
 // reconcileSource fetches the upstream OCI artifact metadata and content.
-// If this fails, it records v1beta2.FetchFailedCondition=True on the object and returns early.
+// If this fails, it records v1.FetchFailedCondition=True on the object and returns early.
 func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch.SerialPatcher,
-	obj *ociv1.OCIRepository, metadata *sourcev1.Artifact, dir string) (sreconcile.Result, error) {
-	var auth authn.Authenticator
+	obj *sourcev1.OCIRepository, metadata *meta.Artifact, dir string) (sreconcile.Result, error) {
+	var authenticator authn.Authenticator
 
 	ctxTimeout, cancel := context.WithTimeout(ctx, obj.Spec.Timeout.Duration)
 	defer cancel()
@@ -354,10 +351,55 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 		return sreconcile.ResultEmpty, e
 	}
 
-	if _, ok := keychain.(soci.Anonymous); obj.Spec.Provider != ociv1.GenericOCIProvider && ok {
+	var proxyURL *url.URL
+	if obj.Spec.ProxySecretRef != nil {
+		var err error
+		proxyURL, err = secrets.ProxyURLFromSecretRef(ctx, r.Client, types.NamespacedName{
+			Name:      obj.Spec.ProxySecretRef.Name,
+			Namespace: obj.GetNamespace(),
+		})
+		if err != nil {
+			e := serror.NewGeneric(
+				fmt.Errorf("failed to get proxy address: %w", err),
+				sourcev1.AuthenticationFailedReason,
+			)
+			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
+			return sreconcile.ResultEmpty, e
+		}
+	}
+
+	if _, ok := keychain.(soci.Anonymous); obj.Spec.Provider != "" && obj.Spec.Provider != sourcev1.GenericOCIProvider && ok {
+		opts := []auth.Option{
+			auth.WithClient(r.Client),
+			auth.WithServiceAccountNamespace(obj.GetNamespace()),
+		}
+
+		if obj.Spec.ServiceAccountName != "" {
+			// Check object-level workload identity feature gate.
+			if !auth.IsObjectLevelWorkloadIdentityEnabled() {
+				const gate = auth.FeatureGateObjectLevelWorkloadIdentity
+				const msgFmt = "to use spec.serviceAccountName for provider authentication please enable the %s feature gate in the controller"
+				err := fmt.Errorf(msgFmt, gate)
+				return sreconcile.ResultEmpty, serror.NewStalling(err, meta.FeatureGateDisabledReason)
+			}
+			// Set ServiceAccountName only if explicitly specified
+			opts = append(opts, auth.WithServiceAccountName(obj.Spec.ServiceAccountName))
+		}
+		if r.TokenCache != nil {
+			involvedObject := cache.InvolvedObject{
+				Kind:      sourcev1.OCIRepositoryKind,
+				Name:      obj.GetName(),
+				Namespace: obj.GetNamespace(),
+				Operation: cache.OperationReconcile,
+			}
+			opts = append(opts, auth.WithCache(*r.TokenCache, involvedObject))
+		}
+		if proxyURL != nil {
+			opts = append(opts, auth.WithProxyURL(*proxyURL))
+		}
 		var authErr error
-		auth, authErr = soci.OIDCAuth(ctxTimeout, obj.Spec.URL, obj.Spec.Provider)
-		if authErr != nil && !errors.Is(authErr, oci.ErrUnconfiguredProvider) {
+		authenticator, authErr = soci.OIDCAuth(ctxTimeout, obj.Spec.URL, obj.Spec.Provider, opts...)
+		if authErr != nil {
 			e := serror.NewGeneric(
 				fmt.Errorf("failed to get credential from %s: %w", obj.Spec.Provider, authErr),
 				sourcev1.AuthenticationFailedReason,
@@ -368,7 +410,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	}
 
 	// Generate the transport for remote operations
-	transport, err := r.transport(ctx, obj)
+	transport, err := r.transport(ctx, obj, proxyURL)
 	if err != nil {
 		e := serror.NewGeneric(
 			fmt.Errorf("failed to generate transport for '%s': %w", obj.Spec.URL, err),
@@ -378,7 +420,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 		return sreconcile.ResultEmpty, e
 	}
 
-	opts := makeRemoteOptions(ctx, transport, keychain, auth)
+	opts := makeRemoteOptions(ctx, transport, keychain, authenticator)
 
 	// Determine which artifact revision to pull
 	ref, err := r.getArtifactRef(obj, opts)
@@ -404,12 +446,12 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	if err != nil {
 		e := serror.NewGeneric(
 			fmt.Errorf("failed to determine artifact digest: %w", err),
-			ociv1.OCIPullFailedReason,
+			sourcev1.OCIPullFailedReason,
 		)
 		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
-	metaArtifact := &sourcev1.Artifact{Revision: revision}
+	metaArtifact := &meta.Artifact{Revision: revision}
 	metaArtifact.DeepCopyInto(metadata)
 
 	// Mark observations about the revision on the object
@@ -438,7 +480,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 		conditions.GetObservedGeneration(obj, sourcev1.SourceVerifiedCondition) != obj.Generation ||
 		conditions.IsFalse(obj, sourcev1.SourceVerifiedCondition) {
 
-		result, err := r.verifySignature(ctx, obj, ref, keychain, auth, transport, opts...)
+		result, err := r.verifySignature(ctx, obj, ref, keychain, authenticator, transport, opts...)
 		if err != nil {
 			provider := obj.Spec.Verify.Provider
 			if obj.Spec.Verify.SecretRef == nil && obj.Spec.Verify.Provider == "cosign" {
@@ -469,7 +511,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	if err != nil {
 		e := serror.NewGeneric(
 			fmt.Errorf("failed to pull artifact from '%s': %w", obj.Spec.URL, err),
-			ociv1.OCIPullFailedReason,
+			sourcev1.OCIPullFailedReason,
 		)
 		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
@@ -480,7 +522,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	if err != nil {
 		e := serror.NewGeneric(
 			fmt.Errorf("failed to parse artifact manifest: %w", err),
-			ociv1.OCILayerOperationFailedReason,
+			sourcev1.OCILayerOperationFailedReason,
 		)
 		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
@@ -490,29 +532,29 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	// Extract the compressed content from the selected layer
 	blob, err := r.selectLayer(obj, img)
 	if err != nil {
-		e := serror.NewGeneric(err, ociv1.OCILayerOperationFailedReason)
+		e := serror.NewGeneric(err, sourcev1.OCILayerOperationFailedReason)
 		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
 
 	// Persist layer content to storage using the specified operation
 	switch obj.GetLayerOperation() {
-	case ociv1.OCILayerExtract:
+	case sourcev1.OCILayerExtract:
 		if err = tar.Untar(blob, dir, tar.WithMaxUntarSize(-1), tar.WithSkipSymlinks()); err != nil {
 			e := serror.NewGeneric(
 				fmt.Errorf("failed to extract layer contents from artifact: %w", err),
-				ociv1.OCILayerOperationFailedReason,
+				sourcev1.OCILayerOperationFailedReason,
 			)
 			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 			return sreconcile.ResultEmpty, e
 		}
-	case ociv1.OCILayerCopy:
+	case sourcev1.OCILayerCopy:
 		metadata.Path = fmt.Sprintf("%s.tgz", r.digestFromRevision(metadata.Revision))
 		file, err := os.Create(filepath.Join(dir, metadata.Path))
 		if err != nil {
 			e := serror.NewGeneric(
 				fmt.Errorf("failed to create file to copy layer to: %w", err),
-				ociv1.OCILayerOperationFailedReason,
+				sourcev1.OCILayerOperationFailedReason,
 			)
 			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 			return sreconcile.ResultEmpty, e
@@ -523,7 +565,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 		if err != nil {
 			e := serror.NewGeneric(
 				fmt.Errorf("failed to copy layer from artifact: %w", err),
-				ociv1.OCILayerOperationFailedReason,
+				sourcev1.OCILayerOperationFailedReason,
 			)
 			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 			return sreconcile.ResultEmpty, e
@@ -531,7 +573,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	default:
 		e := serror.NewGeneric(
 			fmt.Errorf("unsupported layer operation: %s", obj.GetLayerOperation()),
-			ociv1.OCILayerOperationFailedReason,
+			sourcev1.OCILayerOperationFailedReason,
 		)
 		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
@@ -543,7 +585,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 
 // selectLayer finds the matching layer and returns its compressed contents.
 // If no layer selector was provided, we pick the first layer from the OCI artifact.
-func (r *OCIRepositoryReconciler) selectLayer(obj *ociv1.OCIRepository, image gcrv1.Image) (io.ReadCloser, error) {
+func (r *OCIRepositoryReconciler) selectLayer(obj *sourcev1.OCIRepository, image gcrv1.Image) (io.ReadCloser, error) {
 	layers, err := image.Layers()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse artifact layers: %w", err)
@@ -624,7 +666,7 @@ func (r *OCIRepositoryReconciler) digestFromRevision(revision string) string {
 // If not, when using cosign it falls back to a keyless approach for verification.
 // When notation is used, a trust policy is required to verify the image.
 // The verification result is returned as a VerificationResult and any error encountered.
-func (r *OCIRepositoryReconciler) verifySignature(ctx context.Context, obj *ociv1.OCIRepository,
+func (r *OCIRepositoryReconciler) verifySignature(ctx context.Context, obj *sourcev1.OCIRepository,
 	ref name.Reference, keychain authn.Keychain, auth authn.Authenticator,
 	transport *http.Transport, opt ...remote.Option) (soci.VerificationResult, error) {
 
@@ -655,7 +697,7 @@ func (r *OCIRepositoryReconciler) verifySignature(ctx context.Context, obj *ociv
 			for k, data := range pubSecret.Data {
 				// search for public keys in the secret
 				if strings.HasSuffix(k, ".pub") {
-					verifier, err := scosign.NewCosignVerifier(ctxTimeout, append(defaultCosignOciOpts, scosign.WithPublicKey(data))...)
+					verifier, err := r.CosignVerifierFactory.NewCosignVerifier(ctxTimeout, append(defaultCosignOciOpts, scosign.WithPublicKey(data))...)
 					if err != nil {
 						return soci.VerificationResultFailed, err
 					}
@@ -691,7 +733,7 @@ func (r *OCIRepositoryReconciler) verifySignature(ctx context.Context, obj *ociv
 		}
 		defaultCosignOciOpts = append(defaultCosignOciOpts, scosign.WithIdentities(identities))
 
-		verifier, err := scosign.NewCosignVerifier(ctxTimeout, defaultCosignOciOpts...)
+		verifier, err := r.CosignVerifierFactory.NewCosignVerifier(ctxTimeout, defaultCosignOciOpts...)
 		if err != nil {
 			return soci.VerificationResultFailed, err
 		}
@@ -792,12 +834,12 @@ func (r *OCIRepositoryReconciler) retrieveSecret(ctx context.Context, verifySecr
 }
 
 // parseRepository validates and extracts the repository URL.
-func (r *OCIRepositoryReconciler) parseRepository(obj *ociv1.OCIRepository) (name.Repository, error) {
-	if !strings.HasPrefix(obj.Spec.URL, ociv1.OCIRepositoryPrefix) {
+func (r *OCIRepositoryReconciler) parseRepository(obj *sourcev1.OCIRepository) (name.Repository, error) {
+	if !strings.HasPrefix(obj.Spec.URL, sourcev1.OCIRepositoryPrefix) {
 		return name.Repository{}, fmt.Errorf("URL must be in format 'oci://<domain>/<org>/<repo>'")
 	}
 
-	url := strings.TrimPrefix(obj.Spec.URL, ociv1.OCIRepositoryPrefix)
+	url := strings.TrimPrefix(obj.Spec.URL, sourcev1.OCIRepositoryPrefix)
 
 	options := []name.Option{}
 	if obj.Spec.Insecure {
@@ -817,7 +859,7 @@ func (r *OCIRepositoryReconciler) parseRepository(obj *ociv1.OCIRepository) (nam
 }
 
 // getArtifactRef determines which tag or revision should be used and returns the OCI artifact FQN.
-func (r *OCIRepositoryReconciler) getArtifactRef(obj *ociv1.OCIRepository, options []remote.Option) (name.Reference, error) {
+func (r *OCIRepositoryReconciler) getArtifactRef(obj *sourcev1.OCIRepository, options []remote.Option) (name.Reference, error) {
 	repo, err := r.parseRepository(obj)
 	if err != nil {
 		return nil, invalidOCIURLError{err}
@@ -881,43 +923,35 @@ func (r *OCIRepositoryReconciler) getTagBySemver(repo name.Repository, exp strin
 // keychain generates the credential keychain based on the resource
 // configuration. If no auth is specified a default keychain with
 // anonymous access is returned
-func (r *OCIRepositoryReconciler) keychain(ctx context.Context, obj *ociv1.OCIRepository) (authn.Keychain, error) {
-	pullSecretNames := sets.NewString()
+func (r *OCIRepositoryReconciler) keychain(ctx context.Context, obj *sourcev1.OCIRepository) (authn.Keychain, error) {
+	var imagePullSecrets []corev1.Secret
 
 	// lookup auth secret
 	if obj.Spec.SecretRef != nil {
-		pullSecretNames.Insert(obj.Spec.SecretRef.Name)
+		var imagePullSecret corev1.Secret
+		secretRef := types.NamespacedName{Namespace: obj.Namespace, Name: obj.Spec.SecretRef.Name}
+		err := r.Get(ctx, secretRef, &imagePullSecret)
+		if err != nil {
+			r.eventLogf(ctx, obj, eventv1.EventTypeTrace, sourcev1.AuthenticationFailedReason,
+				"auth secret '%s' not found", obj.Spec.SecretRef.Name)
+			return nil, fmt.Errorf("failed to get secret '%s': %w", secretRef, err)
+		}
+		imagePullSecrets = append(imagePullSecrets, imagePullSecret)
 	}
 
 	// lookup service account
 	if obj.Spec.ServiceAccountName != "" {
-		serviceAccountName := obj.Spec.ServiceAccountName
-		serviceAccount := corev1.ServiceAccount{}
-		err := r.Get(ctx, types.NamespacedName{Namespace: obj.Namespace, Name: serviceAccountName}, &serviceAccount)
+		saRef := types.NamespacedName{Namespace: obj.Namespace, Name: obj.Spec.ServiceAccountName}
+		saSecrets, err := secrets.PullSecretsFromServiceAccountRef(ctx, r.Client, saRef)
 		if err != nil {
 			return nil, err
 		}
-		for _, ips := range serviceAccount.ImagePullSecrets {
-			pullSecretNames.Insert(ips.Name)
-		}
+		imagePullSecrets = append(imagePullSecrets, saSecrets...)
 	}
 
 	// if no pullsecrets available return an AnonymousKeychain
-	if len(pullSecretNames) == 0 {
+	if len(imagePullSecrets) == 0 {
 		return soci.Anonymous{}, nil
-	}
-
-	// lookup image pull secrets
-	imagePullSecrets := make([]corev1.Secret, len(pullSecretNames))
-	for i, imagePullSecretName := range pullSecretNames.List() {
-		imagePullSecret := corev1.Secret{}
-		err := r.Get(ctx, types.NamespacedName{Namespace: obj.Namespace, Name: imagePullSecretName}, &imagePullSecret)
-		if err != nil {
-			r.eventLogf(ctx, obj, eventv1.EventTypeTrace, sourcev1.AuthenticationFailedReason,
-				"auth secret '%s' not found", imagePullSecretName)
-			return nil, err
-		}
-		imagePullSecrets[i] = imagePullSecret
 	}
 
 	return k8schain.NewFromPullSecrets(ctx, imagePullSecrets)
@@ -927,7 +961,7 @@ func (r *OCIRepositoryReconciler) keychain(ctx context.Context, obj *ociv1.OCIRe
 // the returned transport will include the TLS client and/or CA certificates.
 // If the insecure flag is set, the transport will skip the verification of the server's certificate.
 // Additionally, if a proxy is specified, transport will use it.
-func (r *OCIRepositoryReconciler) transport(ctx context.Context, obj *ociv1.OCIRepository) (*http.Transport, error) {
+func (r *OCIRepositoryReconciler) transport(ctx context.Context, obj *sourcev1.OCIRepository, proxyURL *url.URL) (*http.Transport, error) {
 	transport := remote.DefaultTransport.(*http.Transport).Clone()
 
 	tlsConfig, err := r.getTLSConfig(ctx, obj)
@@ -938,10 +972,6 @@ func (r *OCIRepositoryReconciler) transport(ctx context.Context, obj *ociv1.OCIR
 		transport.TLSClientConfig = tlsConfig
 	}
 
-	proxyURL, err := r.getProxyURL(ctx, obj)
-	if err != nil {
-		return nil, err
-	}
 	if proxyURL != nil {
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
@@ -951,9 +981,14 @@ func (r *OCIRepositoryReconciler) transport(ctx context.Context, obj *ociv1.OCIR
 
 // getTLSConfig gets the TLS configuration for the transport based on the
 // specified secret reference in the OCIRepository object, or the insecure flag.
-func (r *OCIRepositoryReconciler) getTLSConfig(ctx context.Context, obj *ociv1.OCIRepository) (*cryptotls.Config, error) {
+func (r *OCIRepositoryReconciler) getTLSConfig(ctx context.Context, obj *sourcev1.OCIRepository) (*cryptotls.Config, error) {
 	if obj.Spec.CertSecretRef == nil || obj.Spec.CertSecretRef.Name == "" {
 		if obj.Spec.Insecure {
+			// NOTE: This is the only place in Flux where InsecureSkipVerify is allowed.
+			// This exception is made for OCIRepository to maintain backward compatibility
+			// with tools like crane that require insecure connections without certificates.
+			// This only applies when no CertSecretRef is provided AND insecure is explicitly set.
+			// All other controllers must NOT allow InsecureSkipVerify per our security policy.
 			return &cryptotls.Config{
 				InsecureSkipVerify: true,
 			}, nil
@@ -961,65 +996,15 @@ func (r *OCIRepositoryReconciler) getTLSConfig(ctx context.Context, obj *ociv1.O
 		return nil, nil
 	}
 
-	certSecretName := types.NamespacedName{
+	secretName := types.NamespacedName{
 		Namespace: obj.Namespace,
 		Name:      obj.Spec.CertSecretRef.Name,
 	}
-	var certSecret corev1.Secret
-	if err := r.Get(ctx, certSecretName, &certSecret); err != nil {
-		return nil, err
-	}
-
-	tlsConfig, _, err := tls.KubeTLSClientConfigFromSecret(certSecret, "")
-	if err != nil {
-		return nil, err
-	}
-	if tlsConfig == nil {
-		tlsConfig, _, err = tls.TLSClientConfigFromSecret(certSecret, "")
-		if err != nil {
-			return nil, err
-		}
-		if tlsConfig != nil {
-			ctrl.LoggerFrom(ctx).
-				Info("warning: specifying TLS auth data via `certFile`/`keyFile`/`caFile` is deprecated, please use `tls.crt`/`tls.key`/`ca.crt` instead")
-		}
-	}
-
-	return tlsConfig, nil
-}
-
-// getProxyURL gets the proxy configuration for the transport based on the
-// specified proxy secret reference in the OCIRepository object.
-func (r *OCIRepositoryReconciler) getProxyURL(ctx context.Context, obj *ociv1.OCIRepository) (*url.URL, error) {
-	if obj.Spec.ProxySecretRef == nil || obj.Spec.ProxySecretRef.Name == "" {
-		return nil, nil
-	}
-
-	proxySecretName := types.NamespacedName{
-		Namespace: obj.Namespace,
-		Name:      obj.Spec.ProxySecretRef.Name,
-	}
-	var proxySecret corev1.Secret
-	if err := r.Get(ctx, proxySecretName, &proxySecret); err != nil {
-		return nil, err
-	}
-
-	proxyData := proxySecret.Data
-	address, ok := proxyData["address"]
-	if !ok {
-		return nil, fmt.Errorf("invalid proxy secret '%s/%s': key 'address' is missing",
-			obj.Namespace, obj.Spec.ProxySecretRef.Name)
-	}
-	proxyURL, err := url.Parse(string(address))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse proxy address '%s': %w", address, err)
-	}
-	user, hasUser := proxyData["username"]
-	password, hasPassword := proxyData["password"]
-	if hasUser || hasPassword {
-		proxyURL.User = url.UserPassword(string(user), string(password))
-	}
-	return proxyURL, nil
+	// NOTE: Use WithSystemCertPool to maintain backward compatibility with the existing
+	// extend approach (system CAs + user CA) rather than the default replace approach (user CA only).
+	// This ensures source-controller continues to work with both system and user-provided CA certificates.
+	var tlsOpts = []secrets.TLSConfigOption{secrets.WithSystemCertPool()}
+	return secrets.TLSConfigFromSecretRef(ctx, r.Client, secretName, tlsOpts...)
 }
 
 // reconcileStorage ensures the current state of the storage matches the
@@ -1035,7 +1020,7 @@ func (r *OCIRepositoryReconciler) getProxyURL(ctx context.Context, obj *ociv1.OC
 // The hostname of any URL in the Status of the object are updated, to ensure
 // they match the Storage server hostname of current runtime.
 func (r *OCIRepositoryReconciler) reconcileStorage(ctx context.Context, sp *patch.SerialPatcher,
-	obj *ociv1.OCIRepository, _ *sourcev1.Artifact, _ string) (sreconcile.Result, error) {
+	obj *sourcev1.OCIRepository, _ *meta.Artifact, _ string) (sreconcile.Result, error) {
 	// Garbage collect previous advertised artifact(s) from storage
 	_ = r.garbageCollect(ctx, obj)
 
@@ -1073,7 +1058,7 @@ func (r *OCIRepositoryReconciler) reconcileStorage(ctx context.Context, sp *patc
 		if artifactMissing {
 			msg += ": disappeared from storage"
 		}
-		rreconcile.ProgressiveStatus(true, obj, meta.ProgressingReason, msg)
+		rreconcile.ProgressiveStatus(true, obj, meta.ProgressingReason, "%s", msg)
 		conditions.Delete(obj, sourcev1.ArtifactInStorageCondition)
 		if err := sp.Patch(ctx, obj, r.patchOptions...); err != nil {
 			return sreconcile.ResultEmpty, serror.NewGeneric(err, sourcev1.PatchOperationFailedReason)
@@ -1092,13 +1077,13 @@ func (r *OCIRepositoryReconciler) reconcileStorage(ctx context.Context, sp *patc
 // (Status) data on the object does not match the given.
 //
 // The inspection of the given data to the object is differed, ensuring any
-// stale observations like v1beta2.ArtifactOutdatedCondition are removed.
+// stale observations like v1.ArtifactOutdatedCondition are removed.
 // If the given Artifact does not differ from the object's current, it returns
 // early.
 // On a successful archive, the Artifact in the Status of the object is set,
 // and the symlink in the Storage is updated to its path.
 func (r *OCIRepositoryReconciler) reconcileArtifact(ctx context.Context, sp *patch.SerialPatcher,
-	obj *ociv1.OCIRepository, metadata *sourcev1.Artifact, dir string) (sreconcile.Result, error) {
+	obj *sourcev1.OCIRepository, metadata *meta.Artifact, dir string) (sreconcile.Result, error) {
 	// Create artifact
 	artifact := r.Storage.NewArtifactFor(obj.Kind, obj, metadata.Revision,
 		fmt.Sprintf("%s.tar.gz", r.digestFromRevision(metadata.Revision)))
@@ -1155,7 +1140,7 @@ func (r *OCIRepositoryReconciler) reconcileArtifact(ctx context.Context, sp *pat
 	defer unlock()
 
 	switch obj.GetLayerOperation() {
-	case ociv1.OCILayerCopy:
+	case sourcev1.OCILayerCopy:
 		if err = r.Storage.CopyFromPath(&artifact, filepath.Join(dir, metadata.Path)); err != nil {
 			e := serror.NewGeneric(
 				fmt.Errorf("unable to copy artifact to storage: %w", err),
@@ -1178,7 +1163,7 @@ func (r *OCIRepositoryReconciler) reconcileArtifact(ctx context.Context, sp *pat
 			ps = append(ps, sourceignore.ReadPatterns(strings.NewReader(*obj.Spec.Ignore), ignoreDomain)...)
 		}
 
-		if err := r.Storage.Archive(&artifact, dir, SourceIgnoreFilter(ps, ignoreDomain)); err != nil {
+		if err := r.Storage.Archive(&artifact, dir, storage.SourceIgnoreFilter(ps, ignoreDomain)); err != nil {
 			e := serror.NewGeneric(
 				fmt.Errorf("unable to archive artifact to storage: %s", err),
 				sourcev1.ArchiveOperationFailedReason,
@@ -1191,7 +1176,6 @@ func (r *OCIRepositoryReconciler) reconcileArtifact(ctx context.Context, sp *pat
 	// Record the observations on the object.
 	obj.Status.Artifact = artifact.DeepCopy()
 	obj.Status.Artifact.Metadata = metadata.Metadata
-	obj.Status.ContentConfigChecksum = "" // To be removed in the next API version.
 	obj.Status.ObservedIgnore = obj.Spec.Ignore
 	obj.Status.ObservedLayerSelector = obj.Spec.LayerSelector
 
@@ -1211,7 +1195,7 @@ func (r *OCIRepositoryReconciler) reconcileArtifact(ctx context.Context, sp *pat
 // reconcileDelete handles the deletion of the object.
 // It first garbage collects all Artifacts for the object from the Storage.
 // Removing the finalizer from the object if successful.
-func (r *OCIRepositoryReconciler) reconcileDelete(ctx context.Context, obj *ociv1.OCIRepository) (sreconcile.Result, error) {
+func (r *OCIRepositoryReconciler) reconcileDelete(ctx context.Context, obj *sourcev1.OCIRepository) (sreconcile.Result, error) {
 	// Garbage collect the resource's artifacts
 	if err := r.garbageCollect(ctx, obj); err != nil {
 		// Return the error so we retry the failed garbage collection
@@ -1220,6 +1204,10 @@ func (r *OCIRepositoryReconciler) reconcileDelete(ctx context.Context, obj *ociv
 
 	// Remove our finalizer from the list
 	controllerutil.RemoveFinalizer(obj, sourcev1.SourceFinalizer)
+
+	// Cleanup caches.
+	r.TokenCache.DeleteEventsForObject(sourcev1.OCIRepositoryKind,
+		obj.GetName(), obj.GetNamespace(), cache.OperationReconcile)
 
 	// Stop reconciliation as the object is being deleted
 	return sreconcile.ResultEmpty, nil
@@ -1230,7 +1218,7 @@ func (r *OCIRepositoryReconciler) reconcileDelete(ctx context.Context, obj *ociv
 // It removes all but the current Artifact from the Storage, unless the
 // deletion timestamp on the object is set. Which will result in the
 // removal of all Artifacts for the objects.
-func (r *OCIRepositoryReconciler) garbageCollect(ctx context.Context, obj *ociv1.OCIRepository) error {
+func (r *OCIRepositoryReconciler) garbageCollect(ctx context.Context, obj *sourcev1.OCIRepository) error {
 	if !obj.DeletionTimestamp.IsZero() {
 		if deleted, err := r.Storage.RemoveAll(r.Storage.NewArtifactFor(obj.Kind, obj.GetObjectMeta(), "", "*")); err != nil {
 			return serror.NewGeneric(
@@ -1254,7 +1242,7 @@ func (r *OCIRepositoryReconciler) garbageCollect(ctx context.Context, obj *ociv1
 		}
 		if len(delFiles) > 0 {
 			r.eventLogf(ctx, obj, eventv1.EventTypeTrace, "GarbageCollectionSucceeded",
-				fmt.Sprintf("garbage collected %d artifacts", len(delFiles)))
+				"garbage collected %d artifacts", len(delFiles))
 			return nil
 		}
 	}
@@ -1278,7 +1266,7 @@ func (r *OCIRepositoryReconciler) eventLogf(ctx context.Context, obj runtime.Obj
 }
 
 // notify emits notification related to the reconciliation.
-func (r *OCIRepositoryReconciler) notify(ctx context.Context, oldObj, newObj *ociv1.OCIRepository, res sreconcile.Result, resErr error) {
+func (r *OCIRepositoryReconciler) notify(ctx context.Context, oldObj, newObj *sourcev1.OCIRepository, res sreconcile.Result, resErr error) {
 	// Notify successful reconciliation for new artifact and recovery from any
 	// failure.
 	if resErr == nil && res == sreconcile.ResultSuccess && newObj.Status.Artifact != nil {
@@ -1344,7 +1332,7 @@ type remoteOptions []remote.Option
 // ociContentConfigChanged evaluates the current spec with the observations
 // of the artifact in the status to determine if artifact content configuration
 // has changed and requires rebuilding the artifact.
-func ociContentConfigChanged(obj *ociv1.OCIRepository) bool {
+func ociContentConfigChanged(obj *sourcev1.OCIRepository) bool {
 	if !ptr.Equal(obj.Spec.Ignore, obj.Status.ObservedIgnore) {
 		return true
 	}
@@ -1359,7 +1347,7 @@ func ociContentConfigChanged(obj *ociv1.OCIRepository) bool {
 // Returns true if both arguments are nil or both arguments
 // dereference to the same value.
 // Based on k8s.io/utils/pointer/pointer.go pointer value equality.
-func layerSelectorEqual(a, b *ociv1.OCILayerSelector) bool {
+func layerSelectorEqual(a, b *sourcev1.OCILayerSelector) bool {
 	if (a == nil) != (b == nil) {
 		return false
 	}
