@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.9.3
+
+**Release date:** 2026-07-13
+
+This patch release fixes the `HelmChart` CRD description for `.status.url`, which
+was copy-pasted from `Bucket` and pointed users at `BucketStatus.Artifact`
+instead of `HelmChartStatus.Artifact`.
+
+Improvements:
+- Fix HelmChartStatus.URL doc-comment referencing BucketStatus
+  [#2110](https://github.com/fluxcd/source-controller/pull/2110)
+
 ## 1.9.2
 
 **Release date:** 2026-07-07
