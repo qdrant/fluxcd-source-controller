@@ -55,6 +55,7 @@ import (
 
 	eventv1 "github.com/fluxcd/pkg/apis/event/v1beta1"
 	"github.com/fluxcd/pkg/apis/meta"
+	"github.com/fluxcd/pkg/artifact/storage"
 	"github.com/fluxcd/pkg/git"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	helper "github.com/fluxcd/pkg/runtime/controller"
@@ -65,13 +66,11 @@ import (
 	"github.com/fluxcd/pkg/tar"
 
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
-	sourcev1beta2 "github.com/fluxcd/source-controller/api/v1beta2"
 	"github.com/fluxcd/source-controller/internal/cache"
 	serror "github.com/fluxcd/source-controller/internal/error"
 	"github.com/fluxcd/source-controller/internal/helm/chart"
 	"github.com/fluxcd/source-controller/internal/helm/getter"
 	"github.com/fluxcd/source-controller/internal/helm/repository"
-	"github.com/fluxcd/source-controller/internal/oci"
 	soci "github.com/fluxcd/source-controller/internal/oci"
 	scosign "github.com/fluxcd/source-controller/internal/oci/cosign"
 	"github.com/fluxcd/source-controller/internal/oci/notation"
@@ -134,7 +133,7 @@ type HelmChartReconciler struct {
 	helper.Metrics
 
 	RegistryClientGenerator RegistryClientGeneratorFunc
-	Storage                 *Storage
+	Storage                 *storage.Storage
 	Getters                 helmgetter.Providers
 	ControllerName          string
 	LeaderElection          *bool
@@ -192,7 +191,7 @@ func (r *HelmChartReconciler) SetupWithManagerAndOptions(ctx context.Context, mg
 			builder.WithPredicates(SourceRevisionChangePredicate{}),
 		).
 		Watches(
-			&sourcev1beta2.Bucket{},
+			&sourcev1.Bucket{},
 			handler.EnqueueRequestsFromMapFunc(r.requestsForBucketChange),
 			builder.WithPredicates(SourceRevisionChangePredicate{}),
 		).
@@ -240,9 +239,7 @@ func (r *HelmChartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		result, retErr = summarizeHelper.SummarizeAndPatch(ctx, obj, summarizeOpts...)
 
-		// Always record suspend, readiness and duration metrics.
-		r.Metrics.RecordSuspend(ctx, obj, obj.Spec.Suspend)
-		r.Metrics.RecordReadiness(ctx, obj)
+		// Always record duration metrics.
 		r.Metrics.RecordDuration(ctx, obj, start)
 	}()
 
@@ -409,7 +406,7 @@ func (r *HelmChartReconciler) reconcileStorage(ctx context.Context, sp *patch.Se
 		if artifactMissing {
 			msg += ": disappeared from storage"
 		}
-		rreconcile.ProgressiveStatus(true, obj, meta.ProgressingReason, msg)
+		rreconcile.ProgressiveStatus(true, obj, meta.ProgressingReason, "%s", msg)
 		conditions.Delete(obj, sourcev1.ArtifactInStorageCondition)
 		if err := sp.Patch(ctx, obj, r.patchOptions...); err != nil {
 			return sreconcile.ResultEmpty, serror.NewGeneric(err, sourcev1.PatchOperationFailedReason)
@@ -504,7 +501,7 @@ func (r *HelmChartReconciler) reconcileSource(ctx context.Context, sp *patch.Ser
 	switch typedSource := s.(type) {
 	case *sourcev1.HelmRepository:
 		return r.buildFromHelmRepository(ctx, obj, typedSource, build)
-	case *sourcev1.GitRepository, *sourcev1beta2.Bucket:
+	case *sourcev1.GitRepository, *sourcev1.Bucket:
 		return r.buildFromTarballArtifact(ctx, obj, *typedSource.GetArtifact(), build)
 	default:
 		// Ending up here should generally not be possible
@@ -702,7 +699,7 @@ func (r *HelmChartReconciler) buildFromHelmRepository(ctx context.Context, obj *
 // v1.Artifact.
 // In case of a failure it records v1.FetchFailedCondition on the chart
 // object, and returns early.
-func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj *sourcev1.HelmChart, source sourcev1.Artifact, b *chart.Build) (sreconcile.Result, error) {
+func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj *sourcev1.HelmChart, source meta.Artifact, b *chart.Build) (sreconcile.Result, error) {
 	// Create temporary working directory
 	tmpDir, err := util.TempDirForObj("", obj)
 	if err != nil {
@@ -779,12 +776,12 @@ func (r *HelmChartReconciler) buildFromTarballArtifact(ctx context.Context, obj 
 		if obj.Spec.SourceRef.Kind == sourcev1.GitRepositoryKind {
 			rev = git.ExtractHashFromRevision(rev).String()
 		}
-		if obj.Spec.SourceRef.Kind == sourcev1beta2.BucketKind {
+		if obj.Spec.SourceRef.Kind == sourcev1.BucketKind {
 			if dig := digest.Digest(rev); dig.Validate() == nil {
 				rev = dig.Encoded()
 			}
 		}
-		if kind := obj.Spec.SourceRef.Kind; kind == sourcev1.GitRepositoryKind || kind == sourcev1beta2.BucketKind {
+		if kind := obj.Spec.SourceRef.Kind; kind == sourcev1.GitRepositoryKind || kind == sourcev1.BucketKind {
 			// The SemVer from the metadata is at times used in e.g. the label metadata for a resource
 			// in a chart, which has a limited length of 63 characters.
 			// To not fill most of this space with a full length SHA hex (40 characters for SHA-1, and
@@ -930,15 +927,15 @@ func (r *HelmChartReconciler) getSource(ctx context.Context, obj *sourcev1.HelmC
 			return nil, err
 		}
 		s = &repo
-	case sourcev1beta2.BucketKind:
-		var bucket sourcev1beta2.Bucket
+	case sourcev1.BucketKind:
+		var bucket sourcev1.Bucket
 		if err := r.Client.Get(ctx, namespacedName, &bucket); err != nil {
 			return nil, err
 		}
 		s = &bucket
 	default:
 		return nil, fmt.Errorf("unsupported source kind '%s', must be one of: %v", obj.Spec.SourceRef.Kind, []string{
-			sourcev1.HelmRepositoryKind, sourcev1.GitRepositoryKind, sourcev1beta2.BucketKind})
+			sourcev1.HelmRepositoryKind, sourcev1.GitRepositoryKind, sourcev1.BucketKind})
 	}
 	return s, nil
 }
@@ -989,7 +986,7 @@ func (r *HelmChartReconciler) garbageCollect(ctx context.Context, obj *sourcev1.
 		}
 		if len(delFiles) > 0 {
 			r.eventLogf(ctx, obj, eventv1.EventTypeTrace, "GarbageCollectionSucceeded",
-				fmt.Sprintf("garbage collected %d artifacts", len(delFiles)))
+				"garbage collected %d artifacts", len(delFiles))
 			return nil
 		}
 	}
@@ -1198,7 +1195,7 @@ func (r *HelmChartReconciler) requestsForGitRepositoryChange(ctx context.Context
 }
 
 func (r *HelmChartReconciler) requestsForBucketChange(ctx context.Context, o client.Object) []reconcile.Request {
-	bucket, ok := o.(*sourcev1beta2.Bucket)
+	bucket, ok := o.(*sourcev1.Bucket)
 	if !ok {
 		ctrl.LoggerFrom(ctx).Error(fmt.Errorf("expected a Bucket, got %T", o),
 			"failed to get reconcile requests for Bucket change")
@@ -1212,7 +1209,7 @@ func (r *HelmChartReconciler) requestsForBucketChange(ctx context.Context, o cli
 
 	var list sourcev1.HelmChartList
 	if err := r.List(ctx, &list, client.MatchingFields{
-		sourcev1.SourceIndexKey: fmt.Sprintf("%s/%s", sourcev1beta2.BucketKind, bucket.Name),
+		sourcev1.SourceIndexKey: fmt.Sprintf("%s/%s", sourcev1.BucketKind, bucket.Name),
 	}); err != nil {
 		ctrl.LoggerFrom(ctx).Error(err, "failed to list HelmCharts for Bucket change")
 		return nil
@@ -1260,7 +1257,7 @@ func observeChartBuild(ctx context.Context, sp *patch.SerialPatcher, pOpts []pat
 	if build.Complete() {
 		conditions.Delete(obj, sourcev1.FetchFailedCondition)
 		conditions.Delete(obj, sourcev1.BuildFailedCondition)
-		if build.VerifiedResult == oci.VerificationResultSuccess {
+		if build.VerifiedResult == soci.VerificationResultSuccess {
 			conditions.MarkTrue(obj, sourcev1.SourceVerifiedCondition, meta.SucceededReason, "verified signature of version %s", build.Version)
 		}
 	}

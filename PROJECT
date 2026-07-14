@@ -37,4 +37,13 @@ resources:
 - group: cd
   kind: OCIRepository
   version: v1beta2
+- group: cd
+  kind: Bucket
+  version: v1
+- group: cd
+  kind: OCIRepository
+  version: v1
+- group: cd
+  kind: ExternalArtifact
+  version: v1
 version: "2"

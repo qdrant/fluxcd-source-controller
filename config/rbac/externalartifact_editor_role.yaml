@@ -1,0 +1,24 @@
+# permissions for end users to edit externalartifacts.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: externalartifact-editor-role
+rules:
+- apiGroups:
+  - cd.qdrant.io
+  resources:
+  - externalartifacts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cd.qdrant.io
+  resources:
+  - externalartifacts/status
+  verbs:
+  - get
