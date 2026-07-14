@@ -67,7 +67,7 @@ require (
 	github.com/sigstore/sigstore v1.9.5
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.10
-	golang.org/x/crypto v0.44.0
+	golang.org/x/crypto v0.45.0
 	golang.org/x/oauth2 v0.33.0
 	golang.org/x/sync v0.18.0
 	google.golang.org/api v0.256.0
@@ -88,7 +88,9 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/iam v1.5.2 // indirect
 	cloud.google.com/go/monitoring v1.24.2 // indirect
+	cyphar.com/go-pathrs v0.2.1 // indirect
 	dario.cat/mergo v1.0.1 // indirect
+	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20230306123547-8075edf89bb0 // indirect
 	github.com/AliyunContainerService/ack-ram-tool/pkg/credentials/provider v0.14.0 // indirect
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/containers/azcontainerregistry v0.2.3 // indirect
@@ -114,6 +116,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/Microsoft/hcsshim v0.11.7 // indirect
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/ProtonMail/go-crypto v1.3.0 // indirect
 	github.com/ThalesIgnite/crypto11 v1.2.5 // indirect
@@ -164,12 +167,17 @@ require (
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
-	github.com/containerd/containerd v1.7.29 // indirect
+	github.com/containerd/cgroups v1.1.0 // indirect
+	github.com/containerd/containerd v1.7.33 // indirect
+	github.com/containerd/containerd/api v1.8.0 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
+	github.com/containerd/fifo v1.1.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
+	github.com/containerd/ttrpc v1.2.7 // indirect
+	github.com/containerd/typeurl/v2 v2.1.1 // indirect
 	github.com/coreos/go-oidc/v3 v3.16.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467 // indirect
@@ -206,7 +214,7 @@ require (
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-ldap/ldap/v3 v3.4.10 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -288,8 +296,13 @@ require (
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/spdystream v0.5.0 // indirect
+	github.com/moby/locker v1.0.1 // indirect
+	github.com/moby/spdystream v0.5.1 // indirect
+	github.com/moby/sys/mountinfo v0.7.1 // indirect
+	github.com/moby/sys/sequential v0.5.0 // indirect
+	github.com/moby/sys/signal v0.7.0 // indirect
 	github.com/moby/sys/user v0.3.0 // indirect
+	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
@@ -304,6 +317,8 @@ require (
 	github.com/oleiade/reflections v1.1.0 // indirect
 	github.com/opencontainers/go-digest/blake3 v0.0.0-20250813155314-89707e38ad1a // indirect
 	github.com/opencontainers/runc v1.2.4 // indirect
+	github.com/opencontainers/runtime-spec v1.2.0 // indirect
+	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/otiai10/mint v1.6.3 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
@@ -368,6 +383,7 @@ require (
 	github.com/zeebo/errs v1.4.0 // indirect
 	gitlab.com/gitlab-org/api/client-go v0.130.1 // indirect
 	go.mongodb.org/mongo-driver v1.14.0 // indirect
+	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/bridges/prometheus v0.63.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.38.0 // indirect
