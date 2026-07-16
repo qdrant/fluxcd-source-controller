@@ -43,10 +43,11 @@ import (
 	"github.com/notaryproject/notation-go/signer"
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	coptions "github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
-	"github.com/sigstore/cosign/v2/pkg/cosign"
+	coptions "github.com/sigstore/cosign/v3/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v3/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/v3/pkg/cosign"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,9 +73,14 @@ import (
 
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	serror "github.com/fluxcd/source-controller/internal/error"
+	scosign "github.com/fluxcd/source-controller/internal/oci/cosign"
 	snotation "github.com/fluxcd/source-controller/internal/oci/notation"
 	sreconcile "github.com/fluxcd/source-controller/internal/reconcile"
 	testproxy "github.com/fluxcd/source-controller/tests/proxy"
+)
+
+var (
+	testCosignVerifierFactory = scosign.NewCosignVerifierFactory()
 )
 
 func TestOCIRepositoryReconciler_deleteBeforeFinalizer(t *testing.T) {
@@ -103,9 +109,10 @@ func TestOCIRepositoryReconciler_deleteBeforeFinalizer(t *testing.T) {
 	g.Expect(k8sClient.Delete(ctx, ocirepo)).NotTo(HaveOccurred())
 
 	r := &OCIRepositoryReconciler{
-		Client:        k8sClient,
-		EventRecorder: record.NewFakeRecorder(32),
-		Storage:       testStorage,
+		Client:                k8sClient,
+		EventRecorder:         record.NewFakeRecorder(32),
+		Storage:               testStorage,
+		CosignVerifierFactory: testCosignVerifierFactory,
 	}
 	// NOTE: Only a real API server responds with an error in this scenario.
 	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(ocirepo)})
@@ -683,7 +690,7 @@ func TestOCIRepository_reconcileSource_authStrategy(t *testing.T) {
 				crane.Insecure,
 			},
 			assertConditions: []metav1.Condition{
-				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.AuthenticationFailedReason, "%s", "failed to get credential from"),
+				*conditions.TrueCondition(sourcev1.FetchFailedCondition, sourcev1.OCIPullFailedReason, "%s", "failed to get access token for artifact registry"),
 			},
 		},
 		{
@@ -798,10 +805,11 @@ func TestOCIRepository_reconcileSource_authStrategy(t *testing.T) {
 			}
 
 			r := &OCIRepositoryReconciler{
-				Client:        clientBuilder.Build(),
-				EventRecorder: record.NewFakeRecorder(32),
-				Storage:       testStorage,
-				patchOptions:  getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
+				Client:                clientBuilder.Build(),
+				EventRecorder:         record.NewFakeRecorder(32),
+				Storage:               testStorage,
+				CosignVerifierFactory: testCosignVerifierFactory,
+				patchOptions:          getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
 			}
 
 			opts := makeRemoteOptions(ctx, makeTransport(tt.insecure), authn.DefaultKeychain, nil)
@@ -861,7 +869,7 @@ func TestOCIRepository_CertSecret(t *testing.T) {
 	clientTLSCert, err := tls.X509KeyPair(clientPublicKey, clientPrivateKey)
 	g.Expect(err).ToNot(HaveOccurred())
 
-	transport := http.DefaultTransport.(*http.Transport)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{
 		RootCAs:      pool,
 		Certificates: []tls.Certificate{clientTLSCert},
@@ -1257,10 +1265,11 @@ func TestOCIRepository_reconcileSource_remoteReference(t *testing.T) {
 		WithStatusSubresource(&sourcev1.OCIRepository{})
 
 	r := &OCIRepositoryReconciler{
-		Client:        clientBuilder.Build(),
-		EventRecorder: record.NewFakeRecorder(32),
-		Storage:       testStorage,
-		patchOptions:  getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
+		Client:                clientBuilder.Build(),
+		EventRecorder:         record.NewFakeRecorder(32),
+		Storage:               testStorage,
+		CosignVerifierFactory: testCosignVerifierFactory,
+		patchOptions:          getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
 	}
 
 	for _, tt := range tests {
@@ -1459,10 +1468,11 @@ func TestOCIRepository_reconcileSource_verifyOCISourceSignatureNotation(t *testi
 		WithStatusSubresource(&sourcev1.OCIRepository{})
 
 	r := &OCIRepositoryReconciler{
-		Client:        clientBuilder.Build(),
-		EventRecorder: record.NewFakeRecorder(32),
-		Storage:       testStorage,
-		patchOptions:  getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
+		Client:                clientBuilder.Build(),
+		EventRecorder:         record.NewFakeRecorder(32),
+		Storage:               testStorage,
+		CosignVerifierFactory: testCosignVerifierFactory,
+		patchOptions:          getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
 	}
 
 	certTuple := testhelper.GetRSASelfSignedSigningCertTuple("notation self-signed certs for testing")
@@ -1589,6 +1599,19 @@ func TestOCIRepository_reconcileSource_verifyOCISourceSignatureNotation(t *testi
 
 				if tt.insecure {
 					remoteRepo.PlainHTTP = true
+				}
+
+				// Configure transport to trust the local registry CA
+				transport := http.DefaultTransport.(*http.Transport).Clone()
+				if !tt.insecure {
+					pool := x509.NewCertPool()
+					pool.AppendCertsFromPEM(tlsCA)
+					transport.TLSClientConfig = &tls.Config{
+						RootCAs: pool,
+					}
+				}
+				remoteRepo.Client = &http.Client{
+					Transport: transport,
 				}
 
 				repo := registry.NewRepository(remoteRepo)
@@ -1809,10 +1832,11 @@ func TestOCIRepository_reconcileSource_verifyOCISourceTrustPolicyNotation(t *tes
 		WithStatusSubresource(&sourcev1.OCIRepository{})
 
 	r := &OCIRepositoryReconciler{
-		Client:        clientBuilder.Build(),
-		EventRecorder: record.NewFakeRecorder(32),
-		Storage:       testStorage,
-		patchOptions:  getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
+		Client:                clientBuilder.Build(),
+		EventRecorder:         record.NewFakeRecorder(32),
+		Storage:               testStorage,
+		CosignVerifierFactory: testCosignVerifierFactory,
+		patchOptions:          getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
 	}
 
 	certTuple := testhelper.GetRSASelfSignedSigningCertTuple("notation self-signed certs for testing")
@@ -2022,12 +2046,12 @@ func TestOCIRepository_reconcileSource_verifyOCISourceSignatureCosign(t *testing
 				Tag: "6.1.5",
 			},
 			wantErr:    true,
-			wantErrMsg: "failed to verify the signature using provider 'cosign': no matching signatures were found for '<url>'",
+			wantErrMsg: "failed to verify the signature using provider 'cosign': no matching signatures were found for '<digest_url>'",
 			want:       sreconcile.ResultEmpty,
 			assertConditions: []metav1.Condition{
 				*conditions.TrueCondition(meta.ReconcilingCondition, meta.ProgressingReason, "building artifact: new revision '<revision>' for '<url>'"),
 				*conditions.UnknownCondition(meta.ReadyCondition, meta.ProgressingReason, "building artifact: new revision '<revision>' for '<url>'"),
-				*conditions.FalseCondition(sourcev1.SourceVerifiedCondition, sourcev1.VerificationError, "failed to verify the signature using provider '<provider>': no matching signatures were found for '<url>'"),
+				*conditions.FalseCondition(sourcev1.SourceVerifiedCondition, sourcev1.VerificationError, "failed to verify the signature using provider '<provider>': no matching signatures were found for '<digest_url>'"),
 			},
 		},
 		{
@@ -2105,10 +2129,11 @@ func TestOCIRepository_reconcileSource_verifyOCISourceSignatureCosign(t *testing
 		WithStatusSubresource(&sourcev1.OCIRepository{})
 
 	r := &OCIRepositoryReconciler{
-		Client:        clientBuilder.Build(),
-		EventRecorder: record.NewFakeRecorder(32),
-		Storage:       testStorage,
-		patchOptions:  getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
+		Client:                clientBuilder.Build(),
+		EventRecorder:         record.NewFakeRecorder(32),
+		Storage:               testStorage,
+		CosignVerifierFactory: testCosignVerifierFactory,
+		patchOptions:          getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
 	}
 
 	pf := func(b bool) ([]byte, error) {
@@ -2211,7 +2236,7 @@ func TestOCIRepository_reconcileSource_verifyOCISourceSignatureCosign(t *testing
 				ro := &coptions.RootOptions{
 					Timeout: timeout,
 				}
-				err = sign.SignCmd(ro, ko, coptions.SignOptions{
+				err = sign.SignCmd(ctx, ro, ko, coptions.SignOptions{
 					Upload:           true,
 					SkipConfirmation: true,
 					TlogUpload:       false,
@@ -2223,9 +2248,11 @@ func TestOCIRepository_reconcileSource_verifyOCISourceSignatureCosign(t *testing
 			}
 
 			image := podinfoVersions[tt.reference.Tag]
+			digestURL := artifactRef.Context().Digest(image.digest.String()).String()
 			assertConditions := tt.assertConditions
 			for k := range assertConditions {
 				assertConditions[k].Message = strings.ReplaceAll(assertConditions[k].Message, "<revision>", fmt.Sprintf("%s@%s", tt.reference.Tag, image.digest.String()))
+				assertConditions[k].Message = strings.ReplaceAll(assertConditions[k].Message, "<digest_url>", digestURL)
 				assertConditions[k].Message = strings.ReplaceAll(assertConditions[k].Message, "<url>", artifactRef.String())
 				assertConditions[k].Message = strings.ReplaceAll(assertConditions[k].Message, "<provider>", "cosign")
 			}
@@ -2244,6 +2271,7 @@ func TestOCIRepository_reconcileSource_verifyOCISourceSignatureCosign(t *testing
 			artifact := &meta.Artifact{}
 			got, err := r.reconcileSource(ctx, sp, obj, artifact, tmpDir)
 			if tt.wantErr {
+				tt.wantErrMsg = strings.ReplaceAll(tt.wantErrMsg, "<digest_url>", digestURL)
 				tt.wantErrMsg = strings.ReplaceAll(tt.wantErrMsg, "<url>", artifactRef.String())
 				g.Expect(err).ToNot(BeNil())
 				g.Expect(err.Error()).To(ContainSubstring(tt.wantErrMsg))
@@ -2371,10 +2399,11 @@ func TestOCIRepository_reconcileSource_verifyOCISourceSignature_keyless(t *testi
 		WithStatusSubresource(&sourcev1.OCIRepository{})
 
 	r := &OCIRepositoryReconciler{
-		Client:        clientBuilder.Build(),
-		EventRecorder: record.NewFakeRecorder(32),
-		Storage:       testStorage,
-		patchOptions:  getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
+		Client:                clientBuilder.Build(),
+		EventRecorder:         record.NewFakeRecorder(32),
+		Storage:               testStorage,
+		CosignVerifierFactory: testCosignVerifierFactory,
+		patchOptions:          getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
 	}
 
 	for _, tt := range tests {
@@ -2867,6 +2896,8 @@ func TestOCIRepository_getArtifactRef(t *testing.T) {
 		"6.1.5",
 		"6.1.6-rc.1",
 		"6.1.6",
+		"6.2.1_ref.1234567", // Version 6.2.1+ref.1234567, encoded as a tag
+		"6.2.1",             // Version 6.2.1, same precedence as 6.2.1, per semver rule 10
 	)
 	g.Expect(err).ToNot(HaveOccurred())
 
@@ -2874,13 +2905,14 @@ func TestOCIRepository_getArtifactRef(t *testing.T) {
 		name      string
 		url       string
 		reference *sourcev1.OCIRepositoryRef
+		selector  *sourcev1.OCILayerSelector
 		wantErr   bool
-		want      string
+		want      types.GomegaMatcher
 	}{
 		{
 			name: "valid url with no reference",
 			url:  "oci://ghcr.io/stefanprodan/charts",
-			want: "ghcr.io/stefanprodan/charts:latest",
+			want: Equal("ghcr.io/stefanprodan/charts:latest"),
 		},
 		{
 			name: "valid url with tag reference",
@@ -2888,7 +2920,7 @@ func TestOCIRepository_getArtifactRef(t *testing.T) {
 			reference: &sourcev1.OCIRepositoryRef{
 				Tag: "6.1.6",
 			},
-			want: "ghcr.io/stefanprodan/charts:6.1.6",
+			want: Equal("ghcr.io/stefanprodan/charts:6.1.6"),
 		},
 		{
 			name: "valid url with digest reference",
@@ -2896,15 +2928,29 @@ func TestOCIRepository_getArtifactRef(t *testing.T) {
 			reference: &sourcev1.OCIRepositoryRef{
 				Digest: imgs["6.1.6"].digest.String(),
 			},
-			want: "ghcr.io/stefanprodan/charts@" + imgs["6.1.6"].digest.String(),
+			want: Equal("ghcr.io/stefanprodan/charts@" + imgs["6.1.6"].digest.String()),
 		},
 		{
 			name: "valid url with semver reference",
 			url:  fmt.Sprintf("oci://%s/podinfo", server.registryHost),
 			reference: &sourcev1.OCIRepositoryRef{
-				SemVer: ">= 6.1.6",
+				SemVer: "~6.1.x",
 			},
-			want: server.registryHost + "/podinfo:6.1.6",
+			want: Equal(server.registryHost + "/podinfo:6.1.6"),
+		},
+		{
+			name: "valid url with semver reference and build identifier",
+			url:  fmt.Sprintf("oci://%s/podinfo", server.registryHost),
+			reference: &sourcev1.OCIRepositoryRef{
+				SemVer: ">= 6.2.0",
+			},
+			selector: &sourcev1.OCILayerSelector{
+				MediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
+			},
+			// Build info does not have a defined sort order in SemVer, so these
+			// two are equivalently new.
+			want: Or(Equal(server.registryHost+"/podinfo:6.2.1_ref.1234567"),
+				Equal(server.registryHost+"/podinfo:6.2.1")),
 		},
 		{
 			name:    "invalid url without oci prefix",
@@ -2918,7 +2964,7 @@ func TestOCIRepository_getArtifactRef(t *testing.T) {
 				SemVer:       ">= 6.1.x-0",
 				SemverFilter: ".*-rc.*",
 			},
-			want: server.registryHost + "/podinfo:6.1.6-rc.1",
+			want: Equal(server.registryHost + "/podinfo:6.1.6-rc.1"),
 		},
 		{
 			name: "valid url with semver filter and unexisting version",
@@ -2959,6 +3005,9 @@ func TestOCIRepository_getArtifactRef(t *testing.T) {
 			if tt.reference != nil {
 				obj.Spec.Reference = tt.reference
 			}
+			if tt.selector != nil {
+				obj.Spec.LayerSelector = tt.selector
+			}
 
 			opts := makeRemoteOptions(ctx, makeTransport(true), authn.DefaultKeychain, nil)
 			got, err := r.getArtifactRef(obj, opts)
@@ -2967,7 +3016,7 @@ func TestOCIRepository_getArtifactRef(t *testing.T) {
 				return
 			}
 			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(got.String()).To(Equal(tt.want))
+			g.Expect(got.String()).To(tt.want)
 		})
 	}
 }
@@ -3078,7 +3127,7 @@ func TestOCIRepository_objectLevelWorkloadIdentityFeatureGate(t *testing.T) {
 		}
 		logOCIRepoStatus(t, resultobj)
 		return !conditions.IsReady(resultobj) &&
-			conditions.GetReason(resultobj, meta.ReadyCondition) == sourcev1.AuthenticationFailedReason
+			conditions.GetReason(resultobj, meta.ReadyCondition) == sourcev1.OCIPullFailedReason
 	}).Should(BeTrue())
 }
 
@@ -3331,9 +3380,10 @@ func TestOCIRepository_ReconcileDelete(t *testing.T) {
 	g := NewWithT(t)
 
 	r := &OCIRepositoryReconciler{
-		EventRecorder: record.NewFakeRecorder(32),
-		Storage:       testStorage,
-		patchOptions:  getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
+		EventRecorder:         record.NewFakeRecorder(32),
+		Storage:               testStorage,
+		CosignVerifierFactory: testCosignVerifierFactory,
+		patchOptions:          getPatchOptions(ociRepositoryReadyCondition.Owned, "sc"),
 	}
 
 	obj := &sourcev1.OCIRepository{
@@ -3550,7 +3600,7 @@ func pushMultiplePodinfoImages(serverURL string, insecure bool, versions ...stri
 	if insecure {
 		opts = append(opts, crane.Insecure)
 	} else {
-		transport := http.DefaultTransport.(*http.Transport)
+		transport := http.DefaultTransport.(*http.Transport).Clone()
 		pool := x509.NewCertPool()
 		pool.AppendCertsFromPEM(tlsCA)
 		transport.TLSClientConfig = &tls.Config{

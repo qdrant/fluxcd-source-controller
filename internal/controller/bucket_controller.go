@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/opencontainers/go-digest"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
@@ -176,11 +177,7 @@ type bucketCredentials struct {
 // executed serially to perform the complete reconcile of the object.
 type bucketReconcileFunc func(ctx context.Context, sp *patch.SerialPatcher, obj *sourcev1.Bucket, index *index.Digester, dir string) (sreconcile.Result, error)
 
-func (r *BucketReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return r.SetupWithManagerAndOptions(mgr, BucketReconcilerOptions{})
-}
-
-func (r *BucketReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, opts BucketReconcilerOptions) error {
+func (r *BucketReconciler) SetupWithManager(mgr ctrl.Manager, opts BucketReconcilerOptions) error {
 	r.patchOptions = getPatchOptions(bucketReadyCondition.Owned, r.ControllerName)
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -354,12 +351,12 @@ func (r *BucketReconciler) notify(ctx context.Context, oldObj, newObj *sourcev1.
 		// Notify on new artifact and failure recovery.
 		if !oldObj.GetArtifact().HasDigest(newObj.GetArtifact().Digest) {
 			r.AnnotatedEventf(newObj, annotations, corev1.EventTypeNormal,
-				"NewArtifact", message)
+				"NewArtifact", "%s", message)
 			ctrl.LoggerFrom(ctx).Info(message)
 		} else {
 			if sreconcile.FailureRecovery(oldObj, newObj, bucketFailConditions) {
 				r.AnnotatedEventf(newObj, annotations, corev1.EventTypeNormal,
-					meta.SucceededReason, message)
+					meta.SucceededReason, "%s", message)
 				ctrl.LoggerFrom(ctx).Info(message)
 			}
 		}
@@ -573,7 +570,7 @@ func (r *BucketReconciler) reconcileArtifact(ctx context.Context, sp *patch.Seri
 	// Archive directory to storage
 	if err := r.Storage.Archive(&artifact, dir, nil); err != nil {
 		e := serror.NewGeneric(
-			fmt.Errorf("unable to archive artifact to storage: %s", err),
+			fmt.Errorf("unable to archive artifact to storage: %w", err),
 			sourcev1.ArchiveOperationFailedReason,
 		)
 		conditions.MarkTrue(obj, sourcev1.StorageOperationFailedCondition, e.Reason, "%s", e)
@@ -627,7 +624,7 @@ func (r *BucketReconciler) garbageCollect(ctx context.Context, obj *sourcev1.Buc
 	if !obj.DeletionTimestamp.IsZero() {
 		if deleted, err := r.Storage.RemoveAll(r.Storage.NewArtifactFor(obj.Kind, obj.GetObjectMeta(), "", "*")); err != nil {
 			return serror.NewGeneric(
-				fmt.Errorf("garbage collection for deleted resource failed: %s", err),
+				fmt.Errorf("garbage collection for deleted resource failed: %w", err),
 				"GarbageCollectionFailed",
 			)
 		} else if deleted != "" {
@@ -677,7 +674,7 @@ func (r *BucketReconciler) annotatedEventLogf(ctx context.Context,
 	} else {
 		ctrl.LoggerFrom(ctx).Info(msg)
 	}
-	r.AnnotatedEventf(obj, annotations, eventType, reason, msg)
+	r.AnnotatedEventf(obj, annotations, eventType, reason, "%s", msg)
 }
 
 // fetchEtagIndex fetches the current etagIndex for the in the obj specified
@@ -758,7 +755,10 @@ func fetchIndexFiles(ctx context.Context, provider BucketProvider, obj *sourcev1
 			}
 			group.Go(func() error {
 				defer sem.Release(1)
-				localPath := filepath.Join(tempDir, k)
+				localPath, err := securejoin.SecureJoin(tempDir, k)
+				if err != nil {
+					return fmt.Errorf("failed to resolve path for '%s' object: %w", k, err)
+				}
 				etag, err := provider.FGetObject(ctxTimeout, obj.Spec.BucketName, k, localPath)
 				if err != nil {
 					if provider.ObjectIsNotFound(err) {

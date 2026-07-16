@@ -182,7 +182,6 @@ func (in *HelmRepository) GetInterval() metav1.Duration {
 
 // +genclient
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=qdranthelmrepo
 // +kubebuilder:skipversion
 
 // HelmRepository is the Schema for the helmrepositories API

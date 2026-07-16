@@ -39,7 +39,8 @@ import (
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
-	"github.com/sigstore/cosign/v2/pkg/cosign"
+	"github.com/sigstore/cosign/v3/pkg/cosign"
+	"helm.sh/helm/v4/pkg/registry"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -140,10 +141,11 @@ type OCIRepositoryReconciler struct {
 	helper.Metrics
 	kuberecorder.EventRecorder
 
-	Storage           *storage.Storage
-	ControllerName    string
-	TokenCache        *cache.TokenCache
-	requeueDependency time.Duration
+	Storage               *storage.Storage
+	ControllerName        string
+	TokenCache            *cache.TokenCache
+	CosignVerifierFactory *scosign.CosignVerifierFactory
+	requeueDependency     time.Duration
 
 	patchOptions []patch.Option
 }
@@ -153,12 +155,7 @@ type OCIRepositoryReconcilerOptions struct {
 	RateLimiter               workqueue.TypedRateLimiter[reconcile.Request]
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *OCIRepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return r.SetupWithManagerAndOptions(mgr, OCIRepositoryReconcilerOptions{})
-}
-
-func (r *OCIRepositoryReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, opts OCIRepositoryReconcilerOptions) error {
+func (r *OCIRepositoryReconciler) SetupWithManager(mgr ctrl.Manager, opts OCIRepositoryReconcilerOptions) error {
 	r.patchOptions = getPatchOptions(ociRepositoryReadyCondition.Owned, r.ControllerName)
 
 	r.requeueDependency = opts.DependencyRequeueInterval
@@ -445,7 +442,6 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	}
 
 	// Get the upstream revision from the artifact digest
-	// TODO: getRevision resolves the digest, which may change before image is fetched, so it should probaly update ref
 	revision, err := r.getRevision(ref, opts)
 	if err != nil {
 		e := serror.NewGeneric(
@@ -457,6 +453,8 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	}
 	metaArtifact := &meta.Artifact{Revision: revision}
 	metaArtifact.DeepCopyInto(metadata)
+
+	digestRef := ref.Context().Digest(r.digestFromRevision(revision))
 
 	// Mark observations about the revision on the object
 	defer func() {
@@ -484,7 +482,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 		conditions.GetObservedGeneration(obj, sourcev1.SourceVerifiedCondition) != obj.Generation ||
 		conditions.IsFalse(obj, sourcev1.SourceVerifiedCondition) {
 
-		result, err := r.verifySignature(ctx, obj, ref, keychain, authenticator, transport, opts...)
+		result, err := r.verifySignature(ctx, obj, digestRef, keychain, authenticator, transport, opts...)
 		if err != nil {
 			provider := obj.Spec.Verify.Provider
 			if obj.Spec.Verify.SecretRef == nil && obj.Spec.Verify.Provider == "cosign" {
@@ -511,7 +509,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	}
 
 	// Pull artifact from the remote container registry
-	img, err := remote.Image(ref, opts...)
+	img, err := remote.Image(digestRef, opts...)
 	if err != nil {
 		e := serror.NewGeneric(
 			fmt.Errorf("failed to pull artifact from '%s': %w", obj.Spec.URL, err),
@@ -540,6 +538,7 @@ func (r *OCIRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 		conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 		return sreconcile.ResultEmpty, e
 	}
+	defer blob.Close()
 
 	// Persist layer content to storage using the specified operation
 	switch obj.GetLayerOperation() {
@@ -682,6 +681,18 @@ func (r *OCIRepositoryReconciler) verifySignature(ctx context.Context, obj *sour
 	case "cosign":
 		defaultCosignOciOpts := []scosign.Options{
 			scosign.WithRemoteOptions(opt...),
+			scosign.WithInsecure(obj.Spec.Insecure),
+			scosign.WithTLSConfig(transport.TLSClientConfig),
+		}
+
+		// If a trusted root secret is provided, read and pass it to the verifier.
+		if trustedRootRef := obj.Spec.Verify.TrustedRootSecretRef; trustedRootRef != nil {
+			data, err := readTrustedRootFromSecret(ctxTimeout, r.Client, obj.Namespace, trustedRootRef)
+			if err != nil {
+				return soci.VerificationResultFailed, fmt.Errorf("failed to read trusted root from secret '%s/%s': %w",
+					obj.Namespace, trustedRootRef.Name, err)
+			}
+			defaultCosignOciOpts = append(defaultCosignOciOpts, scosign.WithTrustedRoot(data))
 		}
 
 		// get the public keys from the given secret
@@ -701,7 +712,7 @@ func (r *OCIRepositoryReconciler) verifySignature(ctx context.Context, obj *sour
 			for k, data := range pubSecret.Data {
 				// search for public keys in the secret
 				if strings.HasSuffix(k, ".pub") {
-					verifier, err := scosign.NewCosignVerifier(ctxTimeout, append(defaultCosignOciOpts, scosign.WithPublicKey(data))...)
+					verifier, err := r.CosignVerifierFactory.NewCosignVerifier(ctxTimeout, append(defaultCosignOciOpts, scosign.WithPublicKey(data))...)
 					if err != nil {
 						return soci.VerificationResultFailed, err
 					}
@@ -737,7 +748,7 @@ func (r *OCIRepositoryReconciler) verifySignature(ctx context.Context, obj *sour
 		}
 		defaultCosignOciOpts = append(defaultCosignOciOpts, scosign.WithIdentities(identities))
 
-		verifier, err := scosign.NewCosignVerifier(ctxTimeout, defaultCosignOciOpts...)
+		verifier, err := r.CosignVerifierFactory.NewCosignVerifier(ctxTimeout, defaultCosignOciOpts...)
 		if err != nil {
 			return soci.VerificationResultFailed, err
 		}
@@ -875,7 +886,7 @@ func (r *OCIRepositoryReconciler) getArtifactRef(obj *sourcev1.OCIRepository, op
 		}
 
 		if obj.Spec.Reference.SemVer != "" {
-			return r.getTagBySemver(repo, obj.Spec.Reference.SemVer, filterTags(obj.Spec.Reference.SemverFilter), options)
+			return r.getTagBySemver(repo, obj.Spec.Reference.SemVer, filterTags(obj.Spec.Reference.SemverFilter), obj.GetLayerMediaType(), options)
 		}
 
 		if obj.Spec.Reference.Tag != "" {
@@ -888,7 +899,7 @@ func (r *OCIRepositoryReconciler) getArtifactRef(obj *sourcev1.OCIRepository, op
 
 // getTagBySemver call the remote container registry, fetches all the tags from the repository,
 // and returns the latest tag according to the semver expression.
-func (r *OCIRepositoryReconciler) getTagBySemver(repo name.Repository, exp string, filter filterFunc, options []remote.Option) (name.Reference, error) {
+func (r *OCIRepositoryReconciler) getTagBySemver(repo name.Repository, exp string, filter filterFunc, mediaType string, options []remote.Option) (name.Reference, error) {
 	tags, err := remote.List(repo, options...)
 	if err != nil {
 		return nil, err
@@ -905,8 +916,9 @@ func (r *OCIRepositoryReconciler) getTagBySemver(repo name.Repository, exp strin
 	}
 
 	var matchingVersions []*semver.Version
-	for _, t := range validTags {
-		v, err := version.ParseVersion(t)
+	for _, ociTag := range validTags {
+		semVerTag := convertOCIToSemVerTag(ociTag, mediaType)
+		v, err := version.ParseVersion(semVerTag)
 		if err != nil {
 			continue
 		}
@@ -920,8 +932,42 @@ func (r *OCIRepositoryReconciler) getTagBySemver(repo name.Repository, exp strin
 		return nil, fmt.Errorf("no match found for semver: %s", exp)
 	}
 
+	// Find the latest SemVer.
 	sort.Sort(sort.Reverse(semver.Collection(matchingVersions)))
-	return repo.Tag(matchingVersions[0].Original()), nil
+	semVerTag := matchingVersions[0].Original()
+
+	// Convert the latest SemVer to an OCI tag and return the reference.
+	ociTag := convertSemVerToOCITag(semVerTag, mediaType)
+	return repo.Tag(ociTag), nil
+}
+
+// convertSemVerToOCITag converts a SemVer tag to an OCI tag
+// according to rules defined by the media type.
+//
+// For OCI Helm charts, the conversion is mapping `+` to `_`,
+// because `+` is not permitted in OCI tags, while `_` is not
+// permitted in SemVer. Each character not being permitted in
+// one of the two sides establishes a perfect bijection between,
+// which then makes the mapping implemented by Helm (and honored
+// here) completely safe.
+func convertSemVerToOCITag(semVer, mediaType string) string {
+	if mediaType == registry.ChartLayerMediaType {
+		return strings.ReplaceAll(semVer, "+", "_")
+	}
+	return semVer
+}
+
+// convertOCIToSemVerTag converts an OCI tag to a SemVer tag
+// according to rules defined by the media type.
+//
+// For OCI Helm charts, the conversion is mapping `_` to `+`,
+// see the comment above on convertSemVerToOCITag for the
+// mapping in the opposite direction and rationale.
+func convertOCIToSemVerTag(ociTag, mediaType string) string {
+	if mediaType == registry.ChartLayerMediaType {
+		return strings.ReplaceAll(ociTag, "_", "+")
+	}
+	return ociTag
 }
 
 // keychain generates the credential keychain based on the resource
@@ -1169,7 +1215,7 @@ func (r *OCIRepositoryReconciler) reconcileArtifact(ctx context.Context, sp *pat
 
 		if err := r.Storage.Archive(&artifact, dir, storage.SourceIgnoreFilter(ps, ignoreDomain)); err != nil {
 			e := serror.NewGeneric(
-				fmt.Errorf("unable to archive artifact to storage: %s", err),
+				fmt.Errorf("unable to archive artifact to storage: %w", err),
 				sourcev1.ArchiveOperationFailedReason,
 			)
 			conditions.MarkTrue(obj, sourcev1.StorageOperationFailedCondition, e.Reason, "%s", e)
@@ -1266,7 +1312,7 @@ func (r *OCIRepositoryReconciler) eventLogf(ctx context.Context, obj runtime.Obj
 	} else {
 		ctrl.LoggerFrom(ctx).Info(msg)
 	}
-	r.Eventf(obj, eventType, reason, msg)
+	r.Eventf(obj, eventType, reason, "%s", msg)
 }
 
 // notify emits notification related to the reconciliation.
@@ -1298,12 +1344,12 @@ func (r *OCIRepositoryReconciler) notify(ctx context.Context, oldObj, newObj *so
 		// Notify on new artifact and failure recovery.
 		if !oldObj.GetArtifact().HasDigest(newObj.GetArtifact().Digest) {
 			r.AnnotatedEventf(newObj, annotations, corev1.EventTypeNormal,
-				"NewArtifact", message)
+				"NewArtifact", "%s", message)
 			ctrl.LoggerFrom(ctx).Info(message)
 		} else {
 			if sreconcile.FailureRecovery(oldObj, newObj, ociRepositoryFailConditions) {
 				r.AnnotatedEventf(newObj, annotations, corev1.EventTypeNormal,
-					meta.SucceededReason, message)
+					meta.SucceededReason, "%s", message)
 				ctrl.LoggerFrom(ctx).Info(message)
 			}
 		}
@@ -1359,6 +1405,29 @@ func layerSelectorEqual(a, b *sourcev1.OCILayerSelector) bool {
 		return true
 	}
 	return *a == *b
+}
+
+const trustedRootKey = "trusted_root.json"
+
+// readTrustedRootFromSecret reads and returns the trusted_root.json data from
+// the Kubernetes Secret referenced by the given LocalObjectReference.
+func readTrustedRootFromSecret(ctx context.Context, c client.Reader, namespace string, ref *meta.LocalObjectReference) ([]byte, error) {
+	secretName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      ref.Name,
+	}
+
+	var secret corev1.Secret
+	if err := c.Get(ctx, secretName, &secret); err != nil {
+		return nil, err
+	}
+
+	data, ok := secret.Data[trustedRootKey]
+	if !ok {
+		return nil, fmt.Errorf("'%s' not found in secret '%s'", trustedRootKey, secretName.String())
+	}
+
+	return data, nil
 }
 
 func filterTags(filter string) filterFunc {

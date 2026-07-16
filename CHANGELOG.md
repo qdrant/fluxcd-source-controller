@@ -2,6 +2,245 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.9.3
+
+**Release date:** 2026-07-13
+
+This patch release fixes the `HelmChart` CRD description for `.status.url`, which
+was copy-pasted from `Bucket` and pointed users at `BucketStatus.Artifact`
+instead of `HelmChartStatus.Artifact`.
+
+Improvements:
+- Fix HelmChartStatus.URL doc-comment referencing BucketStatus
+  [#2110](https://github.com/fluxcd/source-controller/pull/2110)
+
+## 1.9.2
+
+**Release date:** 2026-07-07
+
+This patch release disables Flux variable substitution on the source-controller
+CRDs by annotating them with `kustomize.toolkit.fluxcd.io/substitute: disabled`,
+so that Kustomizations with post-build substitution enabled no longer corrupt
+the CRD schemas when they contain `${...}` sequences. It also caches the
+registry authorization token during Notation verification, so the token is
+fetched once per verification instead of once per request, reducing
+token-endpoint traffic against the registry.
+
+Fixes:
+- Disable variable substitution in CRDs
+  [#2103](https://github.com/fluxcd/source-controller/pull/2103)
+
+Improvements:
+- Cache registry token during Notation verification
+  [#2105](https://github.com/fluxcd/source-controller/pull/2105)
+
+## 1.9.1
+
+**Release date:** 2026-06-30
+
+This patch release updates Kubernetes to 1.36.2 and the fluxcd/pkg dependencies,
+adds kubectl categories to the source-controller CRDs and documents the
+controller's command-line options.
+
+Improvements:
+- Add categories to source-controller CRDs
+  [#2090](https://github.com/fluxcd/source-controller/pull/2090)
+- Document controller options
+  [#2094](https://github.com/fluxcd/source-controller/pull/2094)
+- Update fluxcd/pkg dependencies
+  [#2092](https://github.com/fluxcd/source-controller/pull/2092)
+
+## 1.9.0
+
+**Release date:** 2026-06-17
+
+This minor release comes with new authentication and verification features
+for the source APIs, along with various improvements, fixes and dependency
+updates.
+
+### GitRepository
+
+The GitRepository controller now supports AWS CodeCommit as a Git provider,
+allowing authentication to CodeCommit repositories.
+
+Git commit and tag verification now supports SSH signatures in addition to
+OpenPGP, so commits and tags signed with SSH keys can be verified via
+`.spec.verify`.
+
+### OCIRepository
+
+The OCIRepository controller now supports configuring a custom Sigstore
+trusted root for keyless signature verification, via a Secret referenced in
+the verification configuration.
+
+OCI artifacts are now resolved and stored strictly by their content digest.
+
+Fixes:
+- cosign: fix v3 bundle verify on http and private CA registries and pass TLS to Rekor
+  [#2061](https://github.com/fluxcd/source-controller/pull/2061)
+- Close OCI blob reader and wrap errors consistently across controllers
+  [#2066](https://github.com/fluxcd/source-controller/pull/2066)
+- Remove unimplemented field from HelmChart CRD
+  [#2080](https://github.com/fluxcd/source-controller/pull/2080)
+
+Improvements:
+- AWS CodeCommit support
+  [#2035](https://github.com/fluxcd/source-controller/pull/2035)
+- Add git commit/tag SSH signature verification
+  [#2077](https://github.com/fluxcd/source-controller/pull/2077)
+- Add custom Sigstore trusted root support
+  [#2003](https://github.com/fluxcd/source-controller/pull/2003)
+- Ensure OCI artifacts are handled strictly by digest
+  [#2075](https://github.com/fluxcd/source-controller/pull/2075)
+- build: target host architecture for local builds and envtest
+  [#2076](https://github.com/fluxcd/source-controller/pull/2076)
+- Various dependency updates
+  [#2067](https://github.com/fluxcd/source-controller/pull/2067)
+  [#2071](https://github.com/fluxcd/source-controller/pull/2071)
+  [#2072](https://github.com/fluxcd/source-controller/pull/2072)
+  [#2073](https://github.com/fluxcd/source-controller/pull/2073)
+  [#2078](https://github.com/fluxcd/source-controller/pull/2078)
+  [#2079](https://github.com/fluxcd/source-controller/pull/2079)
+  [#2081](https://github.com/fluxcd/source-controller/pull/2081)
+
+## 1.8.5
+
+**Release date:** 2026-05-20
+
+This patch release hardens path handling in the source reconcilers and updates
+go-git to v5.19.1, which fixes
+[CVE-2026-45571](https://github.com/advisories/GHSA-crhj-59gh-8x96) (crafted
+repositories may modify the main and submodule `.git` directories) and
+[CVE-2026-45570](https://github.com/advisories/GHSA-m7cr-m3pv-hgrp) (improper
+single-quote escaping in the SSH transport). It also fixes Helm chart
+resolution for OCI tags that encode semver build metadata, updates Helm to
+v4.2.0 to align with helm-controller, and adds support for GCP sovereign cloud
+artifact registries via the fluxcd/pkg update.
+
+Fixes:
+- Improve path handling in source reconcilers
+  [#2055](https://github.com/fluxcd/source-controller/pull/2055)
+- Support Helm semver encoding in OCI repositories
+  [#2051](https://github.com/fluxcd/source-controller/pull/2051)
+
+Improvements:
+- Update Helm to v4.2.0
+  [#2049](https://github.com/fluxcd/source-controller/pull/2049)
+- Upgrade k8s to 1.36.1, c-r to 0.24.1, cli-utils to 1.2.1
+  [#2052](https://github.com/fluxcd/source-controller/pull/2052)
+- Update fluxcd/pkg dependencies
+  [#2056](https://github.com/fluxcd/source-controller/pull/2056)
+
+## 1.8.4
+
+**Release date:** 2026-05-12
+
+This patch release comes with dependency updates, including go-git v5.19.0
+which fixes [CVE-2026-45022](https://github.com/advisories/GHSA-389r-gv7p-r3rp).
+
+Improvements:
+- Update fluxcd/pkg dependencies
+  [#2045](https://github.com/fluxcd/source-controller/pull/2045)
+
+## 1.8.3
+
+**Release date:** 2026-04-21
+
+This patch release updates go-git to v5.18.0, which includes performance
+improvements for Git operations, and comes with dependency updates.
+
+Improvements:
+- Update go-git to v5.18.0 (includes perf improvements)
+  [#2031](https://github.com/fluxcd/source-controller/pull/2031)
+  [#2036](https://github.com/fluxcd/source-controller/pull/2036)
+
+## 1.8.2
+
+**Release date:** 2026-04-07
+
+This patch release fixes the Azure Blob prefix option not being passed
+to the storage client, and improves the error message when using encrypted
+SSH keys without a password.
+
+Fixes:
+- Fix azure blob prefix option not passed
+  [#2014](https://github.com/fluxcd/source-controller/pull/2014)
+
+Improvements:
+- Improve error message for encrypted SSH keys without password
+  [#2013](https://github.com/fluxcd/source-controller/pull/2013)
+
+## 1.8.1
+
+**Release date:** 2026-03-12
+
+This patch release fixes Azure Container Registry authentication by using the
+ACR-specific auth scope instead of the generic registry scope.
+
+Improvements:
+- Remove no longer needed workaround for Flux 2.8
+  [#1993](https://github.com/fluxcd/source-controller/pull/1993)
+- Update fluxcd/pkg dependencies
+  [#2001](https://github.com/fluxcd/source-controller/pull/2001)
+  [#2005](https://github.com/fluxcd/source-controller/pull/2005)
+
+## 1.8.0
+
+**Release date:** 2026-02-17
+
+This minor release comes with Helm v4 support, cosign v3 verification,
+and various improvements.
+
+⚠️ The `v1beta2` APIs were removed. Before upgrading the CRDs, Flux users
+must run [`flux migrate`](https://github.com/fluxcd/flux2/pull/5473) to
+migrate the cluster storage off `v1beta2`.
+
+### HelmChart
+
+The HelmChart controller now uses Helm v4. The `HelmRepository` type `oci`
+has been moved to maintenance mode, users should migrate to `OCIRepository`.
+
+CRD validation for `v1` has been aligned with `v1beta2` so that invalid
+specs are rejected at admission time.
+
+### OCIRepository
+
+The OCIRepository controller now supports verifying artifacts signed with
+both cosign v2 and cosign v3.
+
+### GitRepository
+
+The `github` provider now supports looking up the GitHub App installation ID
+automatically, removing the need to configure it manually.
+
+### General updates
+
+In addition, the Kubernetes dependencies have been updated to v1.35.0 and
+the controller is now built with Go 1.26.
+
+Improvements:
+- Upgrade Helm to v4
+  [#1953](https://github.com/fluxcd/source-controller/pull/1953)
+  [#1958](https://github.com/fluxcd/source-controller/pull/1958)
+  [#1980](https://github.com/fluxcd/source-controller/pull/1980)
+- Discover cosign v3 NewBundleFormat for verification
+  [#1961](https://github.com/fluxcd/source-controller/pull/1961)
+- Introduce support for looking up GH app installation ID
+  [#1963](https://github.com/fluxcd/source-controller/pull/1963)
+- Remove deprecated APIs in group `source.toolkit.fluxcd.io/v1beta2`
+  [#1983](https://github.com/fluxcd/source-controller/pull/1983)
+- Docs: Move `HelmRepository` type `oci` to maintenance mode
+  [#1985](https://github.com/fluxcd/source-controller/pull/1985)
+- sourcev1: align CRD validation with v1beta2
+  [#1944](https://github.com/fluxcd/source-controller/pull/1944)
+- Various dependency updates
+  [#1967](https://github.com/fluxcd/source-controller/pull/1967)
+  [#1972](https://github.com/fluxcd/source-controller/pull/1972)
+  [#1981](https://github.com/fluxcd/source-controller/pull/1981)
+  [#1984](https://github.com/fluxcd/source-controller/pull/1984)
+  [#1986](https://github.com/fluxcd/source-controller/pull/1986)
+  [#1987](https://github.com/fluxcd/source-controller/pull/1987)
+
 ## 1.7.4
 
 **Release date:** 2025-11-19

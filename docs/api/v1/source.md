@@ -407,7 +407,7 @@ string
 </td>
 <td>
 <em>(Optional)</em>
-<p>Provider used for authentication, can be &lsquo;azure&rsquo;, &lsquo;github&rsquo;, &lsquo;generic&rsquo;.
+<p>Provider used for authentication, can be &lsquo;aws&rsquo;, &lsquo;azure&rsquo;, &lsquo;github&rsquo;, &lsquo;generic&rsquo;.
 When not specified, defaults to &lsquo;generic&rsquo;.</p>
 </td>
 </tr>
@@ -421,7 +421,7 @@ string
 <td>
 <em>(Optional)</em>
 <p>ServiceAccountName is the name of the Kubernetes ServiceAccount used to
-authenticate to the GitRepository. This field is only supported for &lsquo;azure&rsquo; provider.</p>
+authenticate to the GitRepository. This field is only supported for &lsquo;azure&rsquo; and &lsquo;aws&rsquo; providers.</p>
 </td>
 </tr>
 <tr>
@@ -757,8 +757,8 @@ source.</p>
 <td>
 <code>verify</code><br>
 <em>
-<a href="#cd.qdrant.io/v1.OCIRepositoryVerification">
-OCIRepositoryVerification
+<a href="#source.toolkit.fluxcd.io/v1.HelmChartVerification">
+HelmChartVerification
 </a>
 </em>
 </td>
@@ -2120,7 +2120,7 @@ string
 </td>
 <td>
 <em>(Optional)</em>
-<p>Provider used for authentication, can be &lsquo;azure&rsquo;, &lsquo;github&rsquo;, &lsquo;generic&rsquo;.
+<p>Provider used for authentication, can be &lsquo;aws&rsquo;, &lsquo;azure&rsquo;, &lsquo;github&rsquo;, &lsquo;generic&rsquo;.
 When not specified, defaults to &lsquo;generic&rsquo;.</p>
 </td>
 </tr>
@@ -2134,7 +2134,7 @@ string
 <td>
 <em>(Optional)</em>
 <p>ServiceAccountName is the name of the Kubernetes ServiceAccount used to
-authenticate to the GitRepository. This field is only supported for &lsquo;azure&rsquo; provider.</p>
+authenticate to the GitRepository. This field is only supported for &lsquo;azure&rsquo; and &lsquo;aws&rsquo; providers.</p>
 </td>
 </tr>
 <tr>
@@ -2491,7 +2491,8 @@ github.com/fluxcd/pkg/apis/meta.LocalObjectReference
 </td>
 <td>
 <p>SecretRef specifies the Secret containing the public keys of trusted Git
-authors.</p>
+authors. PGP public keys must be stored under keys with the .asc suffix,
+and SSH public keys must be stored under keys with the .sshpub suffix.</p>
 </td>
 </tr>
 </tbody>
@@ -2637,8 +2638,8 @@ source.</p>
 <td>
 <code>verify</code><br>
 <em>
-<a href="#cd.qdrant.io/v1.OCIRepositoryVerification">
-OCIRepositoryVerification
+<a href="#source.toolkit.fluxcd.io/v1.HelmChartVerification">
+HelmChartVerification
 </a>
 </em>
 </td>
@@ -2750,7 +2751,7 @@ string
 <em>(Optional)</em>
 <p>URL is the dynamic fetch link for the latest Artifact.
 It is provided on a &ldquo;best effort&rdquo; basis, and using the precise
-BucketStatus.Artifact data is recommended.</p>
+HelmChartStatus.Artifact data is recommended.</p>
 </td>
 </tr>
 <tr>
@@ -2786,7 +2787,71 @@ github.com/fluxcd/pkg/apis/meta.ReconcileRequestStatus
 </table>
 </div>
 </div>
-<h3 id="cd.qdrant.io/v1.HelmRepositorySpec">HelmRepositorySpec
+<h3 id="source.toolkit.fluxcd.io/v1.HelmChartVerification">HelmChartVerification
+</h3>
+<p>
+(<em>Appears on:</em>
+<a href="#source.toolkit.fluxcd.io/v1.HelmChartSpec">HelmChartSpec</a>)
+</p>
+<p>HelmChartVerification verifies the authenticity of an OCI Artifact</p>
+<div class="md-typeset__scrollwrap">
+<div class="md-typeset__table">
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>provider</code><br>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Provider specifies the technology used to sign the OCI Artifact.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>secretRef</code><br>
+<em>
+<a href="https://pkg.go.dev/github.com/fluxcd/pkg/apis/meta#LocalObjectReference">
+github.com/fluxcd/pkg/apis/meta.LocalObjectReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>SecretRef specifies the Kubernetes Secret containing the
+trusted public keys.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>matchOIDCIdentity</code><br>
+<em>
+<a href="#source.toolkit.fluxcd.io/v1.OIDCIdentityMatch">
+[]OIDCIdentityMatch
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MatchOIDCIdentity specifies the identity matching criteria to use
+while verifying an OCI artifact which was signed using Cosign keyless
+signing. The artifact&rsquo;s identity is deemed to be verified if any of the
+specified matchers match against the identity.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<h3 id="source.toolkit.fluxcd.io/v1.HelmRepositorySpec">HelmRepositorySpec
 </h3>
 <p>
 (<em>Appears on:</em>
@@ -3604,8 +3669,7 @@ github.com/fluxcd/pkg/apis/meta.ReconcileRequestStatus
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#cd.qdrant.io/v1.HelmChartSpec">HelmChartSpec</a>, 
-<a href="#cd.qdrant.io/v1.OCIRepositorySpec">OCIRepositorySpec</a>)
+<a href="#source.toolkit.fluxcd.io/v1.OCIRepositorySpec">OCIRepositorySpec</a>)
 </p>
 <p>OCIRepositoryVerification verifies the authenticity of an OCI Artifact</p>
 <div class="md-typeset__scrollwrap">
@@ -3661,6 +3725,23 @@ signing. The artifact&rsquo;s identity is deemed to be verified if any of the
 specified matchers match against the identity.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>trustedRootSecretRef</code><br>
+<em>
+<a href="https://pkg.go.dev/github.com/fluxcd/pkg/apis/meta#LocalObjectReference">
+github.com/fluxcd/pkg/apis/meta.LocalObjectReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>TrustedRootSecretRef specifies the Kubernetes Secret containing a
+Sigstore trusted_root.json file. This enables verification against
+self-hosted Sigstore infrastructure (custom Fulcio CA, self-hosted
+Rekor instance). The Secret must contain a key named &ldquo;trusted_root.json&rdquo;.</p>
+</td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -3669,7 +3750,8 @@ specified matchers match against the identity.</p>
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#cd.qdrant.io/v1.OCIRepositoryVerification">OCIRepositoryVerification</a>)
+<a href="#source.toolkit.fluxcd.io/v1.HelmChartVerification">HelmChartVerification</a>, 
+<a href="#source.toolkit.fluxcd.io/v1.OCIRepositoryVerification">OCIRepositoryVerification</a>)
 </p>
 <p>OIDCIdentityMatch specifies options for verifying the certificate identity,
 i.e. the issuer and the subject of the certificate.</p>
