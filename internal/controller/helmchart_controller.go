@@ -134,6 +134,7 @@ type HelmChartReconciler struct {
 	Storage               *storage.Storage
 	Getters               helmgetter.Providers
 	ControllerName        string
+	LeaderElection        *bool
 	CosignVerifierFactory *scosign.CosignVerifierFactory
 
 	Cache *cache.Cache
