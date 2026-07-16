@@ -4,13 +4,13 @@ resources:
 - group: cd
   kind: GitRepository
   version: v1
-- group: source
+- group: cd
   kind: HelmRepository
   version: v1
-- group: source
+- group: cd
   kind: HelmChart
   version: v1
-- group: source
+- group: cd
   kind: Bucket
   version: v1
 - group: cd

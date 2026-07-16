@@ -757,7 +757,7 @@ source.</p>
 <td>
 <code>verify</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartVerification">
+<a href="#cd.qdrant.io/v1.HelmChartVerification">
 HelmChartVerification
 </a>
 </em>
@@ -2638,7 +2638,7 @@ source.</p>
 <td>
 <code>verify</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartVerification">
+<a href="#cd.qdrant.io/v1.HelmChartVerification">
 HelmChartVerification
 </a>
 </em>
@@ -2787,11 +2787,11 @@ github.com/fluxcd/pkg/apis/meta.ReconcileRequestStatus
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.HelmChartVerification">HelmChartVerification
+<h3 id="cd.qdrant.io/v1.HelmChartVerification">HelmChartVerification
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartSpec">HelmChartSpec</a>)
+<a href="#cd.qdrant.io/v1.HelmChartSpec">HelmChartSpec</a>)
 </p>
 <p>HelmChartVerification verifies the authenticity of an OCI Artifact</p>
 <div class="md-typeset__scrollwrap">
@@ -2834,7 +2834,7 @@ trusted public keys.</p>
 <td>
 <code>matchOIDCIdentity</code><br>
 <em>
-<a href="#source.toolkit.fluxcd.io/v1.OIDCIdentityMatch">
+<a href="#cd.qdrant.io/v1.OIDCIdentityMatch">
 []OIDCIdentityMatch
 </a>
 </em>
@@ -2851,7 +2851,7 @@ specified matchers match against the identity.</p>
 </table>
 </div>
 </div>
-<h3 id="source.toolkit.fluxcd.io/v1.HelmRepositorySpec">HelmRepositorySpec
+<h3 id="cd.qdrant.io/v1.HelmRepositorySpec">HelmRepositorySpec
 </h3>
 <p>
 (<em>Appears on:</em>
@@ -3669,7 +3669,7 @@ github.com/fluxcd/pkg/apis/meta.ReconcileRequestStatus
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.OCIRepositorySpec">OCIRepositorySpec</a>)
+<a href="#cd.qdrant.io/v1.OCIRepositorySpec">OCIRepositorySpec</a>)
 </p>
 <p>OCIRepositoryVerification verifies the authenticity of an OCI Artifact</p>
 <div class="md-typeset__scrollwrap">
@@ -3750,8 +3750,8 @@ Rekor instance). The Secret must contain a key named &ldquo;trusted_root.json&rd
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#source.toolkit.fluxcd.io/v1.HelmChartVerification">HelmChartVerification</a>, 
-<a href="#source.toolkit.fluxcd.io/v1.OCIRepositoryVerification">OCIRepositoryVerification</a>)
+<a href="#cd.qdrant.io/v1.HelmChartVerification">HelmChartVerification</a>, 
+<a href="#cd.qdrant.io/v1.OCIRepositoryVerification">OCIRepositoryVerification</a>)
 </p>
 <p>OIDCIdentityMatch specifies options for verifying the certificate identity,
 i.e. the issuer and the subject of the certificate.</p>

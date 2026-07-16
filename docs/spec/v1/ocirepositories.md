@@ -684,7 +684,7 @@ kubectl create secret generic sigstore-trusted-root \
 Reference it in the OCIRepository:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: cd.qdrant.io/v1
 kind: OCIRepository
 metadata:
   name: podinfo
