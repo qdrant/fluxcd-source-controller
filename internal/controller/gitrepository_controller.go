@@ -28,11 +28,12 @@ import (
 
 	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/fluxcd/pkg/auth"
+	"github.com/fluxcd/pkg/auth/githubapp"
 	authutils "github.com/fluxcd/pkg/auth/utils"
-	"github.com/fluxcd/pkg/git/github"
 	"github.com/fluxcd/pkg/runtime/logger"
 	"github.com/fluxcd/pkg/runtime/secrets"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	ssh "golang.org/x/crypto/ssh"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -69,6 +70,41 @@ import (
 	"github.com/fluxcd/source-controller/internal/reconcile/summarize"
 	"github.com/fluxcd/source-controller/internal/util"
 )
+
+const (
+	// publicKeyPGPSuffix is the Secret data key suffix for PGP public keys.
+	publicKeyPGPSuffix = ".asc"
+	// publicKeySSHSuffix is the Secret data key suffix for SSH public keys.
+	publicKeySSHSuffix = ".sshpub"
+)
+
+// gitSigner abstracts the verification methods shared by git.Commit and git.Tag.
+type gitSigner interface {
+	SignatureType() string
+	VerifyPGP(keyRings ...string) (string, error)
+	VerifySSH(authorizedKeys ...string) (string, error)
+}
+
+// verifyGitObject dispatches signature verification based on the signature type
+// of the given git object. It returns the key identity (PGP key ID or SSH
+// fingerprint) on success, or an error if verification fails or the required
+// key type is missing from the Secret.
+func verifyGitObject(obj gitSigner, keyRings []string, authorizedKeys []string) (string, error) {
+	switch obj.SignatureType() {
+	case "openpgp":
+		if len(keyRings) == 0 {
+			return "", fmt.Errorf("PGP signature detected but no PGP public keys found in secret (keys with %s suffix)", publicKeyPGPSuffix)
+		}
+		return obj.VerifyPGP(keyRings...)
+	case "ssh":
+		if len(authorizedKeys) == 0 {
+			return "", fmt.Errorf("SSH signature detected but no SSH public keys found in secret (keys with %s suffix)", publicKeySSHSuffix)
+		}
+		return obj.VerifySSH(authorizedKeys...)
+	default:
+		return "", fmt.Errorf("unsupported signature type: %s", obj.SignatureType())
+	}
+}
 
 // gitRepositoryReadyCondition contains the information required to summarize a
 // v1.GitRepository Ready Condition.
@@ -152,11 +188,7 @@ type GitRepositoryReconcilerOptions struct {
 // v1.GitRepository (sub)reconcile functions.
 type gitRepositoryReconcileFunc func(ctx context.Context, sp *patch.SerialPatcher, obj *sourcev1.GitRepository, commit *git.Commit, includes *artifactSet, dir string) (sreconcile.Result, error)
 
-func (r *GitRepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return r.SetupWithManagerAndOptions(mgr, GitRepositoryReconcilerOptions{})
-}
-
-func (r *GitRepositoryReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, opts GitRepositoryReconcilerOptions) error {
+func (r *GitRepositoryReconciler) SetupWithManager(mgr ctrl.Manager, opts GitRepositoryReconcilerOptions) error {
 	r.patchOptions = getPatchOptions(gitRepositoryReadyCondition.Owned, r.ControllerName)
 
 	r.requeueDependency = opts.DependencyRequeueInterval
@@ -330,7 +362,7 @@ func (r *GitRepositoryReconciler) reconcile(ctx context.Context, sp *patch.Seria
 func (r *GitRepositoryReconciler) notify(ctx context.Context, oldObj, newObj *sourcev1.GitRepository, commit git.Commit, res sreconcile.Result, resErr error) {
 	// Notify successful reconciliation for new artifact, no-op reconciliation
 	// and recovery from any failure.
-	if r.shouldNotify(oldObj, newObj, res, resErr) {
+	if r.shouldNotify(newObj, res, resErr) {
 		annotations := map[string]string{
 			fmt.Sprintf("%s/%s", sourcev1.GroupVersion.Group, eventv1.MetaRevisionKey): newObj.Status.Artifact.Revision,
 			fmt.Sprintf("%s/%s", sourcev1.GroupVersion.Group, eventv1.MetaDigestKey):   newObj.Status.Artifact.Digest,
@@ -348,12 +380,12 @@ func (r *GitRepositoryReconciler) notify(ctx context.Context, oldObj, newObj *so
 		// Notify on new artifact and failure recovery.
 		if !oldObj.GetArtifact().HasDigest(newObj.GetArtifact().Digest) {
 			r.AnnotatedEventf(newObj, annotations, corev1.EventTypeNormal,
-				"NewArtifact", message)
+				"NewArtifact", "%s", message)
 			ctrl.LoggerFrom(ctx).Info(message)
 		} else {
 			if sreconcile.FailureRecovery(oldObj, newObj, gitRepositoryFailConditions) {
 				r.AnnotatedEventf(newObj, annotations, corev1.EventTypeNormal,
-					meta.SucceededReason, message)
+					meta.SucceededReason, "%s", message)
 				ctrl.LoggerFrom(ctx).Info(message)
 			}
 		}
@@ -364,7 +396,7 @@ func (r *GitRepositoryReconciler) notify(ctx context.Context, oldObj, newObj *so
 // notification should be sent. It decides about the final informational
 // notifications after the reconciliation. Failure notification and in-line
 // notifications are not handled here.
-func (r *GitRepositoryReconciler) shouldNotify(oldObj, newObj *sourcev1.GitRepository, res sreconcile.Result, resErr error) bool {
+func (r *GitRepositoryReconciler) shouldNotify(newObj *sourcev1.GitRepository, res sreconcile.Result, resErr error) bool {
 	// Notify for successful reconciliation.
 	if resErr == nil && res == sreconcile.ResultSuccess && newObj.Status.Artifact != nil {
 		return true
@@ -564,7 +596,7 @@ func (r *GitRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 		// Check if the content config contributing to the artifact has changed.
 		if !gitContentConfigChanged(obj, includes) {
 			ge := serror.NewGeneric(
-				fmt.Errorf("no changes since last reconcilation: observed revision '%s'",
+				fmt.Errorf("no changes since last reconciliation: observed revision '%s'",
 					commitReference(obj, commit)), sourcev1.GitOperationSucceedReason,
 			)
 			ge.Notification = false
@@ -597,7 +629,7 @@ func (r *GitRepositoryReconciler) reconcileSource(ctx context.Context, sp *patch
 	conditions.Delete(obj, sourcev1.FetchFailedCondition)
 
 	// Validate sparse checkout paths after successful checkout.
-	if err := r.validateSparseCheckoutPaths(ctx, obj, dir); err != nil {
+	if err := r.validateSparseCheckoutPaths(obj, dir); err != nil {
 		e := serror.NewGeneric(
 			fmt.Errorf("failed to sparse checkout directories : %w", err),
 			sourcev1.GitOperationFailedReason,
@@ -657,14 +689,31 @@ func (r *GitRepositoryReconciler) getAuthOpts(ctx context.Context, obj *sourcev1
 		return nil, e
 	}
 
+	// Check if SSH identity key is encrypted but no password was provided.
+	if opts.Transport == git.SSH && len(opts.Identity) > 0 && opts.Password == "" {
+		_, err := ssh.ParseRawPrivateKey(opts.Identity)
+		var missingErr *ssh.PassphraseMissingError
+		if errors.As(err, &missingErr) {
+			e := serror.NewGeneric(
+				fmt.Errorf("SSH identity key is encrypted but no 'password' field was provided in the secret '%s/%s'",
+					obj.GetNamespace(), obj.Spec.SecretRef.Name),
+				sourcev1.AuthenticationFailedReason,
+			)
+			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
+			return nil, e
+		}
+	}
+
 	// Configure provider authentication if specified.
-	var getCreds func() (*authutils.GitCredentials, error)
+	var getCreds func() (*auth.GitCredentials, error)
 	switch provider := obj.GetProvider(); provider {
-	case sourcev1.GitProviderAzure: // If AWS or GCP are added in the future they can be added here separated by a comma.
-		getCreds = func() (*authutils.GitCredentials, error) {
+	// If other providers (GCP, etc.) are added in the future they can be added here separated by a comma.
+	case sourcev1.GitProviderAzure, sourcev1.GitProviderAWS:
+		getCreds = func() (*auth.GitCredentials, error) {
 			opts := []auth.Option{
 				auth.WithClient(r.Client),
 				auth.WithServiceAccountNamespace(obj.GetNamespace()),
+				auth.WithGitURL(u),
 			}
 
 			if obj.Spec.ServiceAccountName != "" {
@@ -718,36 +767,36 @@ func (r *GitRepositoryReconciler) getAuthOpts(ctx context.Context, obj *sourcev1
 			conditions.MarkTrue(obj, sourcev1.FetchFailedCondition, e.Reason, "%s", e)
 			return nil, e
 		}
-		getCreds = func() (*authutils.GitCredentials, error) {
-			var appOpts []github.OptFunc
+		getCreds = func() (*auth.GitCredentials, error) {
+			var appOpts []githubapp.OptFunc
 
-			appOpts = append(appOpts, github.WithAppData(authMethods.GitHubAppData))
+			appOpts = append(appOpts, githubapp.WithAppData(authMethods.GitHubAppData))
 
 			if proxyURL != nil {
-				appOpts = append(appOpts, github.WithProxyURL(proxyURL))
+				appOpts = append(appOpts, githubapp.WithProxyURL(proxyURL))
 			}
 
 			if r.TokenCache != nil {
-				appOpts = append(appOpts, github.WithCache(r.TokenCache, sourcev1.GitRepositoryKind,
+				appOpts = append(appOpts, githubapp.WithCache(r.TokenCache, sourcev1.GitRepositoryKind,
 					obj.GetName(), obj.GetNamespace(), cache.OperationReconcile))
 			}
 
 			if authMethods.HasTLS() {
-				appOpts = append(appOpts, github.WithTLSConfig(authMethods.TLS))
+				appOpts = append(appOpts, githubapp.WithTLSConfig(authMethods.TLS))
 			}
 
-			username, password, err := github.GetCredentials(ctx, appOpts...)
+			username, password, err := githubapp.GetCredentials(ctx, appOpts...)
 			if err != nil {
 				return nil, err
 			}
-			return &authutils.GitCredentials{
+			return &auth.GitCredentials{
 				Username: username,
 				Password: password,
 			}, nil
 		}
 	default:
 		// analyze secret, if it has github app data, perhaps provider should have been github.
-		if appID := authData[github.KeyAppID]; len(appID) != 0 {
+		if appID := authData[githubapp.KeyAppID]; len(appID) != 0 {
 			e := serror.NewGeneric(
 				fmt.Errorf("secretRef '%s/%s' has github app data but provider is not set to github", obj.GetNamespace(), obj.Spec.SecretRef.Name),
 				sourcev1.InvalidProviderConfigurationReason,
@@ -1081,7 +1130,7 @@ func (r *GitRepositoryReconciler) verifySignature(ctx context.Context, obj *sour
 		return sreconcile.ResultSuccess, nil
 	}
 
-	// Get secret with GPG data
+	// Get secret with public key data
 	publicKeySecret := types.NamespacedName{
 		Namespace: obj.Namespace,
 		Name:      obj.Spec.Verification.SecretRef.Name,
@@ -1089,7 +1138,7 @@ func (r *GitRepositoryReconciler) verifySignature(ctx context.Context, obj *sour
 	secret := &corev1.Secret{}
 	if err := r.Client.Get(ctx, publicKeySecret, secret); err != nil {
 		e := serror.NewGeneric(
-			fmt.Errorf("PGP public keys secret error: %w", err),
+			fmt.Errorf("public keys secret error: %w", err),
 			"VerificationError",
 		)
 		conditions.MarkFalse(obj, sourcev1.SourceVerifiedCondition, e.Reason, "%s", e)
@@ -1097,8 +1146,16 @@ func (r *GitRepositoryReconciler) verifySignature(ctx context.Context, obj *sour
 	}
 
 	var keyRings []string
-	for _, v := range secret.Data {
-		keyRings = append(keyRings, string(v))
+	var authorizedKeys []string
+	for k, v := range secret.Data {
+		if strings.HasSuffix(k, publicKeySSHSuffix) {
+			authorizedKeys = append(authorizedKeys, string(v))
+		} else if strings.HasSuffix(k, publicKeyPGPSuffix) {
+			keyRings = append(keyRings, string(v))
+		} else {
+			// Provide fallback to support previous undocumented behavior
+			keyRings = append(keyRings, string(v))
+		}
 	}
 
 	var message strings.Builder
@@ -1128,38 +1185,34 @@ func (r *GitRepositoryReconciler) verifySignature(ctx context.Context, obj *sour
 			return sreconcile.ResultEmpty, err
 		}
 
-		// Verify tag with GPG data from secret
-		tagEntity, err := tag.Verify(keyRings...)
+		entity, err := verifyGitObject(tag, keyRings, authorizedKeys)
 		if err != nil {
 			e := serror.NewGeneric(
 				fmt.Errorf("signature verification of tag '%s' failed: %w", tag.String(), err),
 				"InvalidTagSignature",
 			)
 			conditions.MarkFalse(obj, sourcev1.SourceVerifiedCondition, e.Reason, "%s", e)
-			// Return error in the hope the secret changes
 			return sreconcile.ResultEmpty, e
 		}
 
-		message.WriteString(fmt.Sprintf("verified signature of\n\t- tag '%s' with key '%s'", tag.String(), tagEntity))
+		message.WriteString(fmt.Sprintf("verified signature of\n\t- tag '%s' with key '%s'", tag.String(), entity))
 	}
 
 	if obj.Spec.Verification.VerifyHEAD() {
-		// Verify commit with GPG data from secret
-		headEntity, err := commit.Verify(keyRings...)
+		entity, err := verifyGitObject(&commit, keyRings, authorizedKeys)
 		if err != nil {
 			e := serror.NewGeneric(
 				fmt.Errorf("signature verification of commit '%s' failed: %w", commit.Hash.String(), err),
 				"InvalidCommitSignature",
 			)
 			conditions.MarkFalse(obj, sourcev1.SourceVerifiedCondition, e.Reason, "%s", e)
-			// Return error in the hope the secret changes
 			return sreconcile.ResultEmpty, e
 		}
 		// If we also verified the tag previously, then append to the message.
 		if message.Len() > 0 {
-			message.WriteString(fmt.Sprintf("\n\t- commit '%s' with key '%s'", commit.Hash.String(), headEntity))
+			message.WriteString(fmt.Sprintf("\n\t- commit '%s' with key '%s'", commit.Hash.String(), entity))
 		} else {
-			message.WriteString(fmt.Sprintf("verified signature of\n\t- commit '%s' with key '%s'", commit.Hash.String(), headEntity))
+			message.WriteString(fmt.Sprintf("verified signature of\n\t- commit '%s' with key '%s'", commit.Hash.String(), entity))
 		}
 	}
 
@@ -1241,7 +1294,7 @@ func (r *GitRepositoryReconciler) eventLogf(ctx context.Context, obj runtime.Obj
 	} else {
 		ctrl.LoggerFrom(ctx).Info(msg)
 	}
-	r.Eventf(obj, eventType, reason, msg)
+	r.Eventf(obj, eventType, reason, "%s", msg)
 }
 
 // gitContentConfigChanged evaluates the current spec with the observations of
@@ -1304,10 +1357,13 @@ func gitContentConfigChanged(obj *sourcev1.GitRepository, includes *artifactSet)
 }
 
 // validateSparseCheckoutPaths checks if the sparse checkout paths exist in the cloned repository.
-func (r *GitRepositoryReconciler) validateSparseCheckoutPaths(ctx context.Context, obj *sourcev1.GitRepository, dir string) error {
+func (r *GitRepositoryReconciler) validateSparseCheckoutPaths(obj *sourcev1.GitRepository, dir string) error {
 	if obj.Spec.SparseCheckout != nil {
 		for _, path := range obj.Spec.SparseCheckout {
-			fullPath := filepath.Join(dir, path)
+			fullPath, err := securejoin.SecureJoin(dir, path)
+			if err != nil {
+				return fmt.Errorf("sparse checkout dir '%s' cannot be resolved: %w", path, err)
+			}
 			if _, err := os.Lstat(fullPath); err != nil {
 				return fmt.Errorf("sparse checkout dir '%s' does not exist in repository: %w", path, err)
 			}

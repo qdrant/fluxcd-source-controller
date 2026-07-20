@@ -15,8 +15,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/events"
 	"github.com/fluxcd/source-controller/internal/cache"
 	"github.com/fluxcd/source-controller/internal/controller"
-	"github.com/fluxcd/source-controller/internal/helm/registry"
-	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v4/pkg/getter"
 	v1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -84,7 +83,7 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		TTL:            helmIndexCacheItemTTL,
 		CacheRecorder:  cacheRecorder,
 		LeaderElection: adapter.LeaderElection,
-	}).SetupWithManagerAndOptions(mgr, controller.HelmRepositoryReconcilerOptions{
+	}).SetupWithManager(mgr, controller.HelmRepositoryReconcilerOptions{
 		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
 		return err
@@ -97,7 +96,7 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		Storage:        storage,
 		ControllerName: adapter.ControllerName,
 		LeaderElection: adapter.LeaderElection,
-	}).SetupWithManagerAndOptions(mgr, controller.GitRepositoryReconcilerOptions{
+	}).SetupWithManager(mgr, controller.GitRepositoryReconcilerOptions{
 		DependencyRequeueInterval: adapter.ReconcilerOptions.DependencyRequeueInterval,
 		RateLimiter:               adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
@@ -111,25 +110,24 @@ func SetupSourceReconcilers(mgr ctrl.Manager, adapter SourceAdapter) error {
 		Storage:        storage,
 		ControllerName: adapter.ControllerName,
 		LeaderElection: adapter.LeaderElection,
-	}).SetupWithManagerAndOptions(mgr, controller.BucketReconcilerOptions{
+	}).SetupWithManager(mgr, controller.BucketReconcilerOptions{
 		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
 		return err
 	}
 
 	if err := (&controller.HelmChartReconciler{
-		Client:                  mgr.GetClient(),
-		RegistryClientGenerator: registry.ClientGenerator,
-		Storage:                 storage,
-		Getters:                 getters,
-		EventRecorder:           eventRecorder,
-		Metrics:                 adapter.MetricOptions,
-		ControllerName:          adapter.ControllerName,
-		Cache:                   helmIndexCache,
-		TTL:                     helmIndexCacheItemTTL,
-		CacheRecorder:           cacheRecorder,
-		LeaderElection:          adapter.LeaderElection,
-	}).SetupWithManagerAndOptions(adapter.Context, mgr, controller.HelmChartReconcilerOptions{
+		Client:         mgr.GetClient(),
+		Storage:        storage,
+		Getters:        getters,
+		EventRecorder:  eventRecorder,
+		Metrics:        adapter.MetricOptions,
+		ControllerName: adapter.ControllerName,
+		Cache:          helmIndexCache,
+		TTL:            helmIndexCacheItemTTL,
+		CacheRecorder:  cacheRecorder,
+		LeaderElection: adapter.LeaderElection,
+	}).SetupWithManager(adapter.Context, mgr, controller.HelmChartReconcilerOptions{
 		RateLimiter: adapter.ReconcilerOptions.RateLimiter,
 	}); err != nil {
 		return err

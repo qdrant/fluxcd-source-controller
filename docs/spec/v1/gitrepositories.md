@@ -245,6 +245,7 @@ used for authentication purposes.
 Supported options are:
 
 - `generic`
+- `aws`
 - `azure`
 - `github`
 
@@ -253,6 +254,65 @@ mechanisms using `spec.secretRef` are used for authentication.
 
 For a complete guide on how to set up authentication for cloud providers,
 see the integration [docs](/flux/integrations/).
+
+#### AWS
+
+The `aws` provider can be used to authenticate to
+[AWS CodeCommit](https://docs.aws.amazon.com/codecommit/latest/userguide/welcome.html)
+repositories using IAM credentials sourced from the controller runtime identity.
+
+**Note:** When the `aws` provider is used, `.spec.url` must be an AWS
+CodeCommit HTTPS endpoint in the format
+`https://git-codecommit.<region>.amazonaws.com/v1/repos/<repository-name>`.
+For a full list of available regions and their endpoints, see the
+[AWS CodeCommit regions documentation](https://docs.aws.amazon.com/codecommit/latest/userguide/regions.html#regions-git).
+
+##### Pre-requisites
+
+- An EKS cluster with either
+  [EKS Pod Identity](https://fluxcd.io/flux/integrations/aws/#with-eks-pod-identity)
+  or
+  [IAM Roles for Service Accounts (IRSA)](https://fluxcd.io/flux/integrations/aws/#with-oidc-federation)
+  configured.
+- An IAM role with the `codecommit:GitPull` permission for the target
+  repository.
+
+##### Configure Flux controller
+
+1. Configure authentication using your preferred [method](https://fluxcd.io/flux/integrations/aws/#authentication).
+
+    Example IAM role policy (see [docs](https://fluxcd.io/flux/integrations/aws/#for-amazon-codecommit) for more details):
+
+    ```json
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "codecommit:GitPull",
+                "Resource": "arn:aws:codecommit:<region>:<account-id>:<repository-name>"
+            }
+        ]
+    }
+    ```
+
+2. Configure AWS CodeCommit `GitRepository`
+
+    ```yaml
+    ---
+    apiVersion: cd.qdrant.io/v1
+    kind: GitRepository
+    metadata:
+      name: codecommit-repository
+      namespace: flux-system
+    spec:
+      interval: 5m0s
+      provider: aws
+      serviceAccountName: my-tenant # optional (used for object-level workload identity)
+      url: https://git-codecommit.<region>.amazonaws.com/v1/repos/<repository-name>
+      ref:
+        branch: main
+    ```
 
 #### Azure
 
@@ -346,19 +406,14 @@ The `github` provider can be used to authenticate to Git repositories using
 The GitHub App information is specified in `.spec.secretRef` in the format
 specified below:
 
-- Get the App ID from the app settings page at
-  `https://github.com/settings/apps/<app-name>`. 
-- Get the App Installation ID from the app installations page at
-`https://github.com/settings/installations`. Click the installed app, the URL
-will contain the installation ID
-`https://github.com/settings/installations/<installation-id>`. For
-organizations, the first part of the URL may be different, but it follows the
-same pattern.
+- Get the App ID from the app settings page at `https://github.com/settings/apps/<app-name>`.
 - The private key that was generated in the pre-requisites.
 - (Optional) GitHub Enterprise Server users can set the base URL to
   `http(s)://HOSTNAME/api/v3`.
-- (Optional) If GitHub Enterprise Server uses a private CA, include its bundle (root and any intermediates) in `ca.crt`.
-  If the `ca.crt` is specified, then it will be used for TLS verification for all API / Git over `HTTPS` requests to the GitHub Enterprise Server.
+- (Optional) If GitHub Enterprise Server uses a private CA, include its
+  bundle (root and any intermediates) in `ca.crt`.
+  If the `ca.crt` is specified, then it will be used for TLS verification
+  for all API / Git over `HTTPS` requests to the GitHub Enterprise Server.
 
 **NOTE:** If the secret contains `tls.crt`, `tls.key` then [mutual TLS configuration](#https-mutual-tls-authentication) will be automatically enabled. 
 Omit these keys if the GitHub server does not support mutual TLS.
@@ -371,6 +426,7 @@ metadata:
 type: Opaque
 stringData:
   githubAppID: "<app-id>"
+  githubAppInstallationOwner: "<github-org-or-user>"
   githubAppInstallationID: "<app-installation-id>"
   githubAppPrivateKey: |
     -----BEGIN RSA PRIVATE KEY-----
@@ -383,14 +439,19 @@ stringData:
     -----END CERTIFICATE-----
 ```
 
+Exactly one of `githubAppInstallationOwner` or `githubAppInstallationID` must be provided.
+If neither or both are provided, the reconciliation will fail with a misconfiguration error.
+When `githubAppInstallationOwner` is provided, the controller will look for the installation
+ID corresponding to the owner using the GitHub API.
+
 Alternatively, the Flux CLI can be used to automatically create the secret with
 the github app authentication information.
 
 ```sh
 flux create secret githubapp ghapp-secret \
     --app-id=1 \
-    --app-installation-id=3 \
-    --app-private-key=~/private-key.pem    
+    --app-installation-owner=my-org \
+    --app-private-key=~/private-key.pem
 ```
 
 ### Service Account reference
@@ -578,7 +639,10 @@ signatures. The field offers two subfields:
      the commit object pointed to by the tag.
 
 - `.secretRef.name`, to specify a reference to a Secret in the same namespace as
-  the GitRepository. Containing the (PGP) public keys of trusted Git authors.
+  the GitRepository. Containing the public keys of trusted Git authors. PGP
+  public keys must be stored under keys with the `.asc` suffix, and SSH public
+  keys must be stored under keys with the `.sshpub` suffix. Keys without a
+  recognized suffix are treated as PGP key rings for backward compatibility.
 
 ```yaml
 ---
@@ -633,6 +697,44 @@ kubectl create secret generic pgp-public-keys \
     --from-file=author2.asc \
     -o yaml
 ```
+
+#### SSH verification
+
+SSH-signed commits and tags can also be verified. Store SSH public keys in
+`authorized_keys` format under keys with the `.sshpub` suffix in the same
+Secret:
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: verification-keys
+  namespace: default
+type: Opaque
+data:
+  author1.asc: <BASE64 PGP public key>
+  author2.sshpub: <BASE64 SSH public key>
+```
+
+Generating an SSH key pair and creating the Secret:
+
+```sh
+# Generate an SSH key pair for signing
+ssh-keygen -t ed25519 -N '' -f /tmp/signing_key
+# Generate secret with the public key
+kubectl create secret generic verification-keys \
+    --from-file=author2.sshpub=/tmp/signing_key.pub \
+    -o yaml
+```
+
+A single Secret can contain both PGP (`.asc`) and SSH (`.sshpub`) keys. The
+controller detects the signature type of each Git object (PGP or SSH) and
+dispatches verification accordingly.
+
+PGP verification reports the PGP key ID in the success message (e.g.
+`5982D0279C227FFD`), while SSH verification reports the SHA256 fingerprint
+(e.g. `SHA256:uNiVztksCsDhcc0u9e8BgrJXVGDaf6s7kOsTmI9N7sM`).
 
 ### Ignore
 
