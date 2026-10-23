@@ -1,0 +1,118 @@
+name: sync-upstream
+
+# Opens a pull request that merges the latest release of this fork's upstream into
+# it, with tools/fork-sync and the settings in .github/fork-sync.yaml. The pull
+# request is always opened: if the merge has conflicts or the result does not
+# build, CI on it fails and someone has to take care of it. See "Maintaining the
+# fork up to date" in the README. This file is the same in every Qdrant fork that
+# uses it.
+#
+# With dry_run, everything happens except pushing the branch and opening the pull
+# request. Every run shows the result in the job summary.
+
+on:
+  schedule:
+    # Once a week, on Monday morning (UTC).
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Upstream release tag to sync, e.g. v1.9.6 (default: the latest stable release)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Do not push the branch or open the pull request'
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  # Decides whether to run. Without the BOT_GITHUB_TOKEN secret, scheduled runs
+  # skip quietly instead of failing every week, manual runs fail with a clear
+  # error, and dry runs go ahead (they do not need it).
+  gate:
+    if: github.repository_owner == 'qdrant'
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - id: gate
+        env:
+          BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ -n "$BOT_GITHUB_TOKEN" ] || [ "$DRY_RUN" = true ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = schedule ]; then
+            echo "::notice title=Sync skipped::The BOT_GITHUB_TOKEN secret is not available, see the README."
+          else
+            echo "::error title=BOT_GITHUB_TOKEN is not available::No Actions secret named BOT_GITHUB_TOKEN is readable by this run. It must be able to push branches, open pull requests and push changes under .github/workflows/. See the README."
+            exit 1
+          fi
+
+  sync:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # for target --check-existing, which only reads public data
+    env:
+      GIT_AUTHOR_NAME: github-actions[bot]
+      GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+      GIT_COMMITTER_NAME: github-actions[bot]
+      GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+    steps:
+      # The credentials are not persisted: the adaptations run upstream's code
+      # (make tidy runs its Makefile), and nothing before the publish step can
+      # read the token.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # No Go cache: this job runs upstream's unreviewed code on the default
+      # branch, and a cache it saves would be restored by other workflows.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/fork-sync/go.mod
+          cache: false
+
+      # Built before the merge, from the fork's own code.
+      - name: Build fork-sync
+        run: go -C tools/fork-sync build -o "$RUNNER_TEMP/fork-sync" .
+
+      - name: Find the upstream release to sync
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          # Dry runs always go ahead: they exist to exercise the merge.
+          CHECK_EXISTING: ${{ inputs.dry_run != true }}
+        run: '"$RUNNER_TEMP/fork-sync" target --tag "$TAG" --check-existing="$CHECK_EXISTING" >> "$GITHUB_OUTPUT"'
+
+      - name: Merge the upstream release
+        id: merge
+        if: steps.target.outputs.status == 'needs-sync'
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+          # setup-go pins the Go of tools/fork-sync; a release can need a newer one.
+          GOTOOLCHAIN: auto
+        run: '"$RUNNER_TEMP/fork-sync" merge "$TAG" --body-file "$RUNNER_TEMP/pr-body.md" --summary-file "$GITHUB_STEP_SUMMARY" >> "$GITHUB_OUTPUT"'
+
+      - name: Push the branch and open the pull request
+        if: inputs.dry_run != true && steps.merge.outcome == 'success'
+        env:
+          # The only step that gets the token.
+          GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+        run: '"$RUNNER_TEMP/fork-sync" publish --branch "$BRANCH" --body-file "$RUNNER_TEMP/pr-body.md"'

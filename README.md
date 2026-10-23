@@ -18,22 +18,57 @@ by our custom ones.
 
 ### Maintaining the fork up to date
 
-- Configure and fetch upstream/main.
-- Create your development branch from origin/main and merge upstream/main into
-  it. You can run the merge with `-X theirs` option.
-- Solve the git conflicts if any.
-- As there might be new files or content added in upstream, we might need to
-  rename groups again. You can do that executing
-  `./scripts/rename-api-groups.sh`.
-- Run `go mod tidy` to clean up the dependencies and execute the tests of the project with `make test`.
-- Ideally, they are passing. Otherwise, you need to work on fixing any possible
-  issue.
-- Push your development branch. After that, you would need to test it using it
-  in the cloud-agent to confirm everything works as expected.
-- Once you confirm it works fine, create a PR for review.
-- **Note for the reviewer:** The merge commit from upstream/main doesn't make
-  sense to review it. Focus on the commits with the changes relevant for the
-  project.
+The [`sync-upstream`](.github/workflows/sync-upstream.yaml) workflow opens a PR
+when upstream publishes a new stable release (`vX.Y.Z`). It runs on Mondays, or
+on demand from the Actions tab (for a given tag, or with `dry_run` to stop before
+pushing). The PR, `Sync upstream vX.Y.Z`, has up to two commits:
+
+1. `Merge upstream tag vX.Y.Z`: upstream's changes, merged automatically.
+2. `chore: apply Qdrant adaptations ...`, only when needed: what the fork owns,
+   put back or regenerated. Its message lists the files.
+
+The workflow runs [`tools/fork-sync`](tools/fork-sync), a small Go tool. What the
+fork owns, the API group rename and the commands that adapt upstream's code
+(`make tidy`) are set in [`.github/fork-sync.yaml`](.github/fork-sync.yaml).
+
+**Reviewing a sync PR**
+
+- CI is the verdict. Failing builds or tests are fixed on the PR branch.
+- With merge conflicts the PR is a draft, with the markers and a list of the
+  conflicting files (`.sync-upstream-conflicts`) committed. The
+  [`conflict-markers`](.github/workflows/conflict-markers.yaml) check fails until
+  the conflicts are resolved and that list is deleted.
+- If `make tidy` fails (say, the release needs a newer Go) the PR still opens,
+  with a note.
+- Merge with a merge commit, never squash or rebase: the upstream tag has to stay
+  an ancestor of `main`.
+- The workflow never merges or tags. Closing a PR without merging tells it to
+  skip that release. The agent's own CI is what checks compatibility with it.
+
+**The fork owns `.github/`.** Upstream's CI needs secrets only Flux has and would
+run with this repository's credentials, so it is never activated: when upstream
+changes something there, the adaptations commit puts the fork's version back (on
+conflicted syncs too). To take an upstream CI change, copy it by hand.
+
+**Token.** The workflow needs a `BOT_GITHUB_TOKEN` secret (not `GITHUB_TOKEN`,
+whose PRs do not trigger CI) that can push branches, open PRs and change files
+under `.github/workflows/`. Without it, scheduled runs skip with a notice and
+manual runs fail with a clear error. Only the publish step receives it.
+
+**Tests.** `go -C tools/fork-sync test ./...`, run in CI as `fork-tools-test`.
+
+#### Manual sync
+
+From an up-to-date `main` (needs `go` and `make`):
+
+```sh
+go -C tools/fork-sync run . --repo ../.. merge vX.Y.Z
+git push origin sync/upstream-vX.Y.Z
+```
+
+Open a PR against `main` and merge it with a merge commit. Resolve conflicts on
+that branch and delete `.sync-upstream-conflicts`. Do not use `-X theirs`, it
+silently prefers upstream's side of every conflict.
 
 ---
 
